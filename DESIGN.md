@@ -1,22 +1,22 @@
 # Tifo Beato — Game Design Document
 
-> Hand-off document for the implementation session. It fixes the concept, the
-> rules, the architecture and the order of work. Numbers marked *(tune)* are
-> starting points, not contracts. Read the repository's `AGENTS.md` first — the
-> framework/game boundary there overrides anything here that seems to conflict.
+> V1 rules and implementation reference. Milestones 0–10 are implemented;
+> milestone 11's hardware, signing and owner-review gates remain open.
+> Numbers marked *(tune)* are starting points, not contracts. Read the
+> repository's `AGENTS.md` first — its framework/game boundary takes precedence.
 > Every club, league, ground, chant and crest in this game is **invented**.
-> Anything marked *(verify)* must be checked with the owner before it reaches a
-> model, a recording or player-facing copy (§17).
+> Original synthesized melodies and fictional copy still require the owner's
+> release review (§17). Automated tests are not physical-device certification.
 
 | | |
 | --- | --- |
 | Game ID | `tifo_beato` |
-| Title | Tifo Beato *(confirm spelling — §17)* |
-| Folder | `godot-base/games/tifo_beato/` (its own Git repository, `jraleman/tifo_beato`, intended to become a submodule) |
+| Title | Tifo Beato — Ninety minutes. No silence. (approved) |
+| Folder | `godot-base/games/tifo_beato/` (registered submodule, `jraleman/tifo_beato`) |
 | Control style | `GameManifest.CONTROL_STYLE_CUSTOM_KEYS` |
 | Round rules | Game-owned (`uses_shell_round_rules = false`) |
 | Players | Solo vs the match and CPU rival capos; two-human hot seat (`max_local_players = 2`, turns) |
-| Menu order | `12` (after Capitan's Walk's planned `11`) |
+| Menu order | `12` (after Capitan's Walk) |
 | Feature tag | `tifo_beato` |
 | Input reference | `games/dead_metal_jam/input/` (microphone, MPM pitch detection, latency calibration); `games/sailor_man/DESIGN.md` §4 (voice frames, bleed, voice health) |
 | Look-and-feel reference | `games/chicken_pit/`, `games/cube_trials/` (toy-like 3D in a `SubViewport` under the 2D shell) |
@@ -32,11 +32,11 @@ groundsman's family.
 
 **Tifo Beato** is a loud, over-the-top arcade rhythm game about rising from
 that bucket to the fence of the most feared, and most ridiculous, ultras group
-in the Grand Continental League. The microphone is the controller. You sing,
+in the Grand Continental League. The microphone is an optional controller. You sing,
 shout, clap and bang out rhythms, and the curva answers. Lead it well and a
 whole stand moves as one giant wave of sound. Lead it badly and it stumbles
 into an awkward, mumbling mess. Keyboard, gamepad and touch play the same
-charts for anyone who can't, or won't, shout at their computer.
+charts for anyone who can't, or won't, use a microphone. Buttons are the default.
 
 The tone is cartoonish and chaotic: a love letter to terrace culture, with its
 devotion, its rivalries, its choreography and the absurd lengths fans go to for
@@ -106,7 +106,7 @@ Five short cards, using the same intro shape as the other games:
 ```
 Title ─► Play ─► Career map (ground · match) or Quick match / Chant war / Hot seat
      ─► Mode select (group on the plinth · ground) ─► Instructions
-     ─► (first time only) Soundcheck: room · clap · shout · sing low/high · latency
+     ─► Railway/lobby; optional explicit-start Soundcheck
      ─► (between career matches) Tifo workshop: design ─► build race
      ─► (some matches) Steward check: sneak the flag / drum in the coat
      ─► MATCH: walk-in chant ─► kick-off TIFO REVEAL
@@ -119,9 +119,10 @@ Title ─► Play ─► Career map (ground · match) or Quick match / Chant war
      ─► Tokens payout ─► career progress ─► Share card / Store / Gallery
 ```
 
-A match lasts **4–6 minutes** *(tune)*: a 20 s walk-in, two halves of about
-2 minutes, and a 30–45 s half-time. Every 15 minutes of real time is a
-natural place to rest the voice (§4.6).
+Normal charts have a 20 s walk-in, two roughly 2-minute halves and a 32 s
+half-time or a complete five-exchange war. Whole phrases finish; slower
+chants, wars and hot-seat count-ins extend that duration. Every 15 minutes
+of actual microphone play is a natural place to rest the voice (§4.6).
 
 ---
 
@@ -181,7 +182,8 @@ a miss into a hit:
 
 - **Volume.** Each hit's level against the player's calibrated *carry* level
   gives ×0.8 at speaking level to ×1.2 at carry level, capped at ×1.2 *(tune)*.
-  In Quiet Mode (§4.6) the scale is pinned to ×1.0.
+  In Quiet Mode (§4.6) the scale is pinned to carry-equivalent ×1.2 so the
+  assist never penalizes the same performance.
 - **Pitch** (Sing notes only). In the right band: ×1.0. One band off: the
   hit counts, ×0.6, and the crowd sings a little sour. Unvoiced: a miss.
 
@@ -266,7 +268,7 @@ The power-up is activated by **three sharp shouts in an empty bar**
 
 Assisted matches carry an **assist badge** on the results and in the records.
 They earn every achievement and Tokens normally. Assists must never make the
-game *worse*. `chant_judge_test.gd` pins that every assist scores a given
+game *worse*. `model_test.gd` pins that every assist scores a given
 performance at least as high as it scores without that assist.
 
 ---
@@ -302,7 +304,7 @@ import it.** There must be no game-to-game dependency:
 | `input/pitch_analysis.gd` | `sound/sound_frame.gd` | Becomes the 100 Hz frame |
 | `input/latency_calibration.gd` | `sound/latency_calibration.gd` | Same statistics; the player **claps**, the click is a low thump (§4.3) |
 | `input/metronome_click.gd` | `sound/guide_drum.gd` | Pre-rendered stream, but a **low, band-limited thump**, not noise |
-| `input/onset_log.gd` | `tools/sound_log.gd` | Dev-only CSV of frames and classifications, for retuning against real rooms |
+| Numeric diagnostics | `tools/sound_spike.gd` | Explicit-start counters, measured latency and classification; no PCM files or monitoring |
 
 `audio/driver/enable_input=true` is already the project default. Keep it on
 for the `tifo_beato` feature tag.
@@ -325,12 +327,14 @@ never needed to detect one. That keeps the noisiest input the most reliable.
 
 ### 4.3 Soundcheck — calibration
 
-A short overlay before the first match, skippable after that and available on
-demand from Settings → Game. It is styled as the capo's warm-up in an empty
-stand:
+A short opt-in overlay reached from the lobby or Soundcheck on resume in
+Settings → Game. Buttons need no microphone calibration. Merely opening the
+overlay requests nothing; Start is the consent/gesture boundary:
 
 1. **Room** — 2 s of silence. Measures the noise floor. Exact digital silence
-   means a dead or denied microphone. Say so plainly and offer buttons.
+   means a dead or denied microphone. Fail this step explicitly, close capture
+   and offer Buttons rather than reporting a completed measurement. No samples
+   receive a separate ten-second permission/no-signal grace.
 2. **Clap** — "Clap along to the big drum." Eight beats at 100 BPM, matched
    by `latency_calibration.gd`. This gives the round-trip latency. The drum is a
    low thump under the onset band, so the mic doesn't hear it as a clap.
@@ -346,11 +350,15 @@ stand:
    is high, and never requires them.
 
 A profile is `{latency_ms, noise_floor, speak_level, carry_level,
-centre_hz, band_width_cents, bleed_db, headphones}`. Profiles are named
-(default "P1"/"P2") and stored in `user://tifo_beato_voice.cfg`. That is
+centre_hz, band_width_cents, bleed_level, headphones, calibrated}`. Separate
+microphone profiles ("P1"/"P2") and Buttons profiles ("P1_buttons"/"P2_buttons")
+are stored in `user://tifo_beato_voice.cfg`. That is
 calibration, so it is deliberately **not** a declared `save_files` entry
 (`AGENTS.md`: saves are progress only). The Buttons path skips steps 1–6
-apart from an optional tap-along latency check.
+apart from an optional tap-along latency check. The global timing trim is
+added to each seat's measured latency, then capped to −100…400 ms; it does not
+replace a calibrated profile. The current Headphones option overrides old
+profile flags.
 
 ### 4.4 Bleed — the game is louder than you
 
@@ -365,20 +373,23 @@ score its own audio. There are four defences, in order:
    onset detector is high-passed above ~250 Hz. Claps, stamps and shouts have
    plenty of energy up there, and the guide drum has almost none.
 3. **Known-output gate.** The game knows exactly when it emits every
-   transient: rival air horns, off-key trumpets, rival drums, the commentator.
+   transient: rival air horns, off-key trumpets and rival drums.
    A mic onset within ± 40 ms *(tune)* of a known emission is discarded unless
    its level beats the emission's measured bleed (§4.3 step 6) by 6 dB.
    **Rival disruptions only ever land off the grid** (§6.2). A correct hit is
-   never on a disruption's beat, so the gate can never eat a correct hit.
+   never on a disruption's beat. Emission registration and pruning use the
+   same latency-compensated clock as input, including −100/+400 ms profiles.
 4. **Never monitor the mic.** The capture bus stays at −80 dB, as in Dead Metal
    Jam. The commentator and crowd duck during call halves.
 
-The **Headphones** toggle (set by soundcheck, editable) relaxes defences 2–3
-so the game can play full crowd audio under your call.
+The **Headphones** toggle relaxes the known-output gate; it does not remove
+the low-guide/response discipline. No crowd recording plays under a call.
 
-`bleed_test.gd` replays recorded room captures *(Milestone 1)* through the
-classifier and pins the false-onset rate. Target: **under one false onset per
-minute** of a match's own audio on laptop speakers *(tune)*.
+`sound_test.gd` and `model_test.gd` check synthesized bleed, real-input
+precedence, compensated emissions and whole disruption intervals. Physical
+speaker verification remains open: target **under one false onset per
+minute** of a match's own audio on laptop speakers. Use numeric diagnostics;
+no room recording is required or saved by the game.
 
 ### 4.5 Buttons, keys and touch
 
@@ -394,7 +405,7 @@ minute** of a match's own audio on laptop speakers *(tune)*.
 `KeySoundSource` turns those inputs into `SoundFrame`s with a **virtual
 profile**: carry level 1.0, centre 0, band ±500 cents. A Beat key is a 40 ms
 burst with a sharp decay, and a Shout key is a sustained loud unvoiced frame.
-While Shout or Sing is held, the player hears **the capo's recorded voice**
+While Shout or Sing is held, the player hears **the capo's synthesized voice**
 (§10.6) on the beat. A button chant still sounds like a chant.
 
 Because the same classifier and judge score both paths, keys cannot be easier
@@ -411,7 +422,8 @@ The pitch of this game is shouting, which makes this section non-negotiable:
   test (§3.6) hold that line.
 - **Quiet Mode** (tunable): volume never scales a score, and every threshold
   is normalized to speaking level. Hummed, spoken and whispered chants score
-  normally. It is for night play, shared rooms or a tired voice.
+  normally at a fixed carry-equivalent ×1.2. It is for night play, shared
+  rooms or a tired voice.
 - After **15 minutes of mic play in a session** *(tune)*, the career map suggests a
   sip of water and offers Buttons or Quiet Mode for the next match. It never
   forces either.
@@ -461,7 +473,10 @@ a win very likely, but never certain. That is football. **Career progress
 depends on stars, never on the match result** (§8.2). A win pays a bonus and
 plays the better story card.
 
-A **goal** for either side opens a 4-bar **goal moment**. A home goal is a
+A **goal** queues a 4-bar **goal moment** after the current line. It authors
+16 future Beat opportunities, supersedes the displaced notes without adding
+misses, skips handoff phases and preserves the match's final whistle.
+A home goal is a
 free-form celebration where every Beat on the grid scores, the stand erupts
 and a tifo can fire. An away goal is a **defiance** phrase: lead the curva
 back to its feet in 4 bars for a big Chant Life refill and a morale point, or
@@ -530,13 +545,18 @@ The rival end tries to throw off your tempo:
 
 Every disruption is **telegraphed one bar ahead** with a caption, an icon and a
 sound, and **always lands off the judged grid** (§4.4). **Gentle rivals**
-halves their frequency and loudness, and **Off** removes them. The bleed
-gate's guarantee depends on the off-grid rule, so `chart_test.gd` checks it
-for every disruption pattern.
+halves their frequency and loudness, and **Off** removes them. The full
+transient must fit outside onset, Hold and Rest windows, including all
+assists. Shared margins live in `match_chart.gd`: 0.75 s before a note,
+0.5 s after, 0.25 s minimum transient. Longer original patterns play only
+inside a safe response tail. A late render batch that misses its safe gap
+keeps the caption/visual event but plays no unsafe sound. `model_test.gd`
+and `scene_test.gd` pin both the authored intervals and runtime safety.
 
 ### 6.3 Chaos events
 
-A match draws **one or two** chaos events from the ground's pool *(tune)*. Each
+A normal match draws two chaos events from the ground's pool; Chaos Kids get
+three, and the Final runs all six. Each
 one changes the rules for a stretch and has a way to **win it**:
 
 | Event | What happens | Win it |
@@ -615,7 +635,10 @@ between exchanges, captioned and also voiced if voice-over exists (§17):
 
 Insults target **drums, scarves, haircuts, singing and tea**. They never
 target people's bodies, identities, places or real groups. The bank is
-reviewed before it ships (§17).
+reviewed before it ships (§17). Human turns have two guide beats before the
+call and a 0.6 s capture tail. Every echo has the same 700-point normalized
+budget regardless of call density. CPU frames catch up before a turn changes;
+both Twin halves actually perform their own part.
 
 **Rival capos** are CPU opponents built from the same `SoundFrame` stream as a
 player (§4.1):
@@ -688,15 +711,15 @@ the tifo order and a bonus**, never the judge:
 | `group_chaos_kids` | **The Chaos Kids** | Teenagers with a vuvuzela | Wild tempo changes | +1 chaos event per match; power-ups from 6-hit milestones | `tifo_beato_seagull` |
 
 The Bucket Brigade is always available on purpose: the balanced group must
-never sit behind a skill wall. Group profiles live in
-`match/group_profiles.gd` and change **data only**.
+never sit behind a skill wall. Group declarations live in
+`tifo_beato_options.gd`; pool-specific configuration in `match_state.gd`
+changes data, not the shared classifier or judge.
 
 ### 7.3 Your curva — identity
 
 The player's club and group are **theirs** (§8.4): colours, crest, group name,
 scarf pattern, banners and chant lyrics. The groups above are sections
-*inside* that curva, wearing its colours. This split is an owner decision
-(§17).
+*inside* that curva, wearing its colours. This split is owner-approved (§17).
 
 ---
 
@@ -747,8 +770,8 @@ changes career progress.
 A game-owned screen reached from the career map:
 
 - **Club name** and **group name**: picked from a curated, combinable word
-  list ("Bucketwick" + "Rovers", "Ultras" + "Tumulto"), with a free-text
-  option off by default *(owner decision — §17)*.
+  list ("Bucketwick" + "Rovers", "Ultras" + "Tumulto"). V1 has no free-text
+  option (owner-approved).
 - **Club colours**: two from a palette of 16. Pairs too close in luminance
   get a warning, so the scarf wall stays readable.
 - **Crest**: a shape, a charge (lion, owl, pigeon, rocket…) and initials.
@@ -772,8 +795,7 @@ A **chant** is a `ChantChart` resource with a tempo, a time signature, a loop
 of phrases and the lyric slots. A **phrase** is a call (notes on a 16th-note
 grid), a response style and an optional sustain. A **match chart** is a
 seeded sequence of chants drawn from the group's pool, with disruption and
-chaos slots. That keeps the content count sane: **24 original chants** in v1
-*(tune)*, about 5 per group plus the Brigade's.
+chaos slots. That keeps the content count sane: **24 original chants** in v1, loaded by `chart/chants.gd`.
 
 Every chant is an **original composition**: no real terrace tunes, no pop
 songs and no anthems, even ones people think are folk songs *(verify each
@@ -782,7 +804,8 @@ melody before it ships — §17)*.
 ### 9.2 Combo, Fury, power-up and chaos copy
 
 Every combo tier, power-up and chaos event has a caption, an icon and a sting,
-listed in `chant_copy.gd` so the tests can check every one exists.
+owned by `chant_judge.gd`, `fury.gd`, `chaos_events.gd` and the presentation
+layer; `model_test.gd` checks the meaningful effects and captions.
 
 ### 9.3 Local multiplayer (hot seat)
 
@@ -799,13 +822,23 @@ P1/P2 label:
 | **Two Capos** (co-op) | One match. Players alternate **verses** (each chant loop) on one shared Chant Life, morale and Fury. One shared result |
 | **Split the Stands** | Each player leads the same seeded match in turn, for their half of the curva. Highest Noise wins, and results wait for the final turn |
 
+Two Capos and Split use P1's chant pool, chart and seed so shared turns are
+comparable. Per-seat input profiles still apply. Verse count-ins contain two
+guide beats plus 0.58 s. The old source survives its positive-latency capture
+tail (latency +0.18 s), then closes before the next player's lead-in.
+Responses begin after the call's capture tail +0.04 s. Final judgement settles
+for 0.5 s plus positive latency while football stops at the authored whistle.
+No source switch may erase an old seat's late valid hit or the next seat's
+first note. Original phase indices are remapped once, not repeatedly in place.
+
 Mobile stays single-player (`GameSession.multiplayer_available()`). A
 simultaneous mic-versus-buttons duel is in Stretch (§16).
 
 ### 9.4 Records
 
 Best Noise and stars per career match and per Quick-play ground and group,
-best combo, rivals beaten, the banners and the daily derby (§11.4). Stored in
+best combo, rivals beaten and the actual banners. Daily derby remains
+post-v1 (§11.4). Stored in
 `user://tifo_beato.cfg`, declared in `save_files`. Writes merge into the
 file, and a record never regresses.
 
@@ -821,9 +854,8 @@ with a priority, a cooldown (6 s, tune) and no repeat within a match:
 - *"Look at the keeper. He has seen the curva. He has seen his own ending."*
 - *"Full Curva Meltdown. I have no further words. I have only scarves."*
 
-Every line is a **caption**. Voice-over is optional *(owner decision — §17)*.
-Voiced lines play **only in response halves and between phases** and are
-ducked, so the mic never has to fight them (§4.4). A telegraph caption always
+Every line is a **caption**. V1 deliberately has no voice-over
+(owner-approved, §17). A telegraph caption always
 wins over a commentator line, because a telegraph is information and the
 commentator is decoration.
 
@@ -835,7 +867,7 @@ commentator is decoration.
 
 | File | Holds | Declared in `save_files`? |
 | --- | --- | --- |
-| `user://tifo_beato.cfg` | Career, identity, banners, records, daily streak, best moments (§11.4) | **Yes** — "Your curva" |
+| `user://tifo_beato.cfg` | Career, identity, actual banners, records, rival and exhibit unlocks | **Yes** — "The Curva" |
 | `user://tifo_beato_voice.cfg` | Soundcheck profiles (§4.3) | No — calibration |
 
 ### 10.2 Store — currency "Tokens"
@@ -844,6 +876,9 @@ Turnstile tokens. `store_currency`: about one Token per 400 Noise *(tune)*, a
 `round_bonus` for finishing a match, a `win_bonus` for a chant war won against
 a CPU capo, and a ceiling of 120 per match. Everything is **cosmetic only**.
 A gold megaphone doesn't widen a timing window.
+
+One completed hot-seat set pays once, after its final seat. Build/steward
+practice and incomplete rounds pay zero; duplicate settlement cannot pay again.
 
 | Slot id | Wears | Kind |
 | --- | --- | --- |
@@ -885,8 +920,9 @@ There are two variants, both through the game's `share_art.tscn`:
 - The **banner card**: the workshop banner, mishaps and all, with its quality
   and a commentator line.
 
-Both carry the ground, the daily badge where it applies and the QR code to
-`stats_url`.
+Both carry the ground and the QR code to `stats_url`. They freeze the actual
+finished banner and equipment rather than rereading the wardrobe after a round.
+Daily badges are post-v1.
 
 ### 10.5 Accessibility (non-negotiable)
 
@@ -912,13 +948,14 @@ Both carry the ground, the daily badge where it applies and the QR code to
 
 ### 10.6 Audio — `audio/tifo_audio.gd`
 
-The guide drum, crowd responses rendered from **layered recorded voices**
-offset by the crowd model's phase scatter (§7.1), the rivals' chants,
-disruptions, stings, the steward mini-games and the commentator. All of it is
-original and game-owned. Crowd voices need **real group recordings**: a
-dozen people chanting each chant's syllables, recorded per section *(owner
-decision — §17)*, with synthesized placeholders until then. Music is drums and
-brass only, and **ducks under every call half** (§4.4).
+All v1 audio is original synthesis: a 55 Hz/8 kHz low guide, layered capo/crowd
+syllables, distinct rival patterns, disruptions, stings and steward cues.
+Responses render accepted timings, bands and mistakes with crowd scatter,
+not a perfect replacement chart. Sustained Buttons notes sound the capo.
+The commentator is caption-only. Real group recordings are not a v1
+requirement; synthesis is the approved direction, not a missing-recording
+fallback. Physical classification and speaker-bleed certification are still
+required independently.
 
 ### 10.7 Achievements (keys are stable forever)
 
@@ -1066,9 +1103,9 @@ colours, and the theme must not tint them.
 
 | Key | Type | Default |
 | --- | --- | --- |
-| `game/tifo_beato_input` | choice: Microphone / Buttons | Microphone *(Buttons when no mic is found)* |
-| `game/tifo_beato_latency_ms` | slider −100…400 ms | from soundcheck, else 0 |
-| `game/tifo_beato_headphones` | toggle | from soundcheck, else false |
+| `game/tifo_beato_input` | choice: Microphone / Buttons | Buttons |
+| `game/tifo_beato_latency_ms` | additive trim −100…400 ms; combined total capped | 0 |
+| `game/tifo_beato_headphones` | toggle, overrides profile flag | false |
 | `game/tifo_beato_quiet_mode` | toggle | false |
 | `game/tifo_beato_any_sound` | toggle | false |
 | `game/tifo_beato_windows` | choice: Normal / Wide / Widest | Normal |
@@ -1076,12 +1113,15 @@ colours, and the theme must not tint them.
 | `game/tifo_beato_never_dies` | toggle | false |
 | `game/tifo_beato_rivals` | choice: Full / Gentle / Off | Full |
 | `game/tifo_beato_static_lane` | toggle | false |
-| `game/tifo_beato_commentator` | choice: Off / Captions / Voice + captions | Captions *(Voice + captions once recorded)* |
+| `game/tifo_beato_commentator` | choice: Off / Captions | Captions |
 | `game/tifo_beato_commentator_chattiness` | choice: Quiet / Normal / Chatty | Normal |
 | `game/tifo_beato_touch_layout` | choice: Standard / Left-handed / Right-handed | Standard |
+| `game/tifo_beato_mode` | Career / Quick match / Chant war / Workshop | Career |
+| `game/tifo_beato_hot_seat` | Duel / Two Capos / Split the Stands | Duel |
+| `game/tifo_beato_soundcheck` | request Soundcheck on resume; opens no mic in Settings | false |
 
-The **Soundcheck** button on the Game tab reopens §4.3. The device picker
-lives there, not in a tunable.
+The lobby Soundcheck action or **Soundcheck on resume** in the Game tab
+reopens §4.3. The device picker lives there, not in a tunable.
 
 Bindings (§4.5) all use the prefix `controls/tifo_beato_`: `beat_left`,
 `beat_right`, `shout`, `sing_low`, `sing_mid`, `sing_high`, `fury`, `power`.
@@ -1096,76 +1136,40 @@ as Cube Trials does.
 ### 14.1 File layout
 
 ```
-game.gd                        # GameManifest — copy, theme, achievements, credits
-tifo_beato_options.gd          # constants-only: tunables, bindings, levels (grounds),
-                               #   characters (groups), store, gallery (loaded by path)
-gameplay.gd / .tscn            # extends GameShell; inherited scene of game_shell.tscn
-intro.tscn                     # five story cards (§1)
-sound/sound_frame.gd           # {t, level, flux, voiced, cents, clarity}
-sound/sound_event.gd           # {t, kind, band, level, duration}
-sound/mic_capture.gd           # adapted from dead_metal_jam/input/
-sound/pitch_detector.gd        # adapted MPM/NSDF, voice range
-sound/sound_classifier.gd      # frames → onsets, claps, shouts, sings, silence (§4.2)
-sound/bleed_gate.gd            # turn gate + known-output gate (§4.4)
-sound/latency_calibration.gd   # adapted
-sound/guide_drum.gd            # pre-rendered low thump stream
-sound/voice_profile.gd         # soundcheck profile, user://tifo_beato_voice.cfg
-sound/mic_source.gd · key_source.gd · pad_source.gd · touch_source.gd · cpu_source.gd
-chart/chant_chart.gd           # resource: tempo, phrases, lyric slots
-chart/chant_phrase.gd
-chart/match_chart.gd           # seeded chant sequence + disruption/chaos slots
-chart/chants/*.tres            # the 24 original chants
-match/chant_judge.gd           # events vs chart → grades, scales, combo (§3.3–§3.5)
-match/chant_life.gd            # never-stop meter, morale, rally (§3.4)
-match/fury.gd                  # Curva Fury and power-ups (§3.6–§3.7)
-match/crowd_state.gd           # sections, sync, scatter, energy (§5.1, §7.1)
-match/match_sim.gd             # the toy football match (§5.2)
-match/disruptions.gd           # rival disruptions, off-grid rule (§6.2)
-match/chaos_events.gd          # chaos events and how to win them (§6.3)
-match/tifo_director.gd         # streaks → tifo tiers (§6.1)
-match/chant_war.gd             # sing-off duel state, rival capos (§6.5)
-match/group_profiles.gd        # the five groups (§7.2)
-match/match_state.gd           # one match: phases, halves, goals, scoring, stars
-match/commentator.gd           # event → line, priority, cooldown
-match/chant_copy.gd            # combo/power-up/chaos captions and names
-career/career_state.gd         # grounds, stops, stars, promotion, budget
-career/identity.gd             # club, group, colours, crest, scarf, lyric slots
-career/word_list.gd            # the closed, curated word list
-career/records.gd              # user://tifo_beato.cfg merge, never regressing
-workshop/banner.gd             # banner data + mishap application
-workshop/build_race.gd         # timed rhythm race → quality + mishaps
-steward/sneak_the_flag.gd · drum_in_the_coat.gd
-world/curva_view.gd            # isolated SubViewport, three camera shots
-world/crowd_multimesh.gd       # per-section MultiMesh + shader parameters
-world/crowd.gdshader           # compatibility-safe bounce/arms/scarf
-world/capo_rig.gd · rival_rig.gd · steward_rig.gd
-world/pitch_view.gd            # the toy match, players, ball, keeper
-world/tifo_view.gd             # scarf wall, mosaic, banner, smoke, inflatable
-world/ground_scenery.gd        # per-ground stands, floodlights, skyline
-world/mesh_builder.gd          # copied from cube_trials/world/, adapted
-ui/match_hud.gd                # beat lane, Chant Life, morale, Fury, energy,
-                               #   combo name, power-up slot, match score
-ui/soundcheck.gd / .tscn
-ui/career_map.gd / .tscn
-ui/identity_editor.gd / .tscn
-ui/workshop.gd / .tscn
-ui/chant_war_hud.gd / .tscn
-audio/tifo_audio.gd
-assets/models/ assets/levels/ assets/icons/ assets/audio/ assets/video/
-share_art.gd / .tscn           # match card and banner card
-store_preview.gd / .tscn       # the capo wearing one item, or a fabric swatch
-gallery_stage.gd / .tscn       # turntable
-character_preview.gd / .tscn   # the capo and their group on the setup plinth
-tests/                         # §15
-tools/                         # capture_art.gd, tutorial_driver.gd, sound_log.gd,
-                               #   chart_preview.tscn, bleed_recorder.tscn
-README.md · DESIGN.md · TODO.md · AGENTS.md
+game.gd, tifo_beato_options.gd   # manifest, constants, content and unlock declarations
+gameplay.gd, gameplay.tscn       # inherited GameShell and game-owned orchestration
+intro.tscn, presentation/intro.gd # five player-paced still cards, Next/Skip
+sound/                         # frames/events, classifier, capture, pitch, profiles,
+                               # bleed/latency/guide and mic/key/pad/touch/CPU sources
+sound/input_stream.gd          # one timestamped stream with independent contacts
+chart/chant_chart.gd, chant_phrase.gd, chants.gd, match_chart.gd
+chart/chants/*.tres            # 24 original chant Resources
+match/                        # judge, life, Fury, crowd, seeded football, chaos,
+                               # disruptions, tifos, war, commentator and match state
+career/                       # career_state.gd, identity.gd, word_list.gd, records.gd
+workshop/                     # banner.gd, build_race.gd
+steward/steward_state.gd       # both gentle steward mini-games
+world/                        # procedural mesh builder, capos, rivals, props, drums,
+                               # crowds/shader, scenery, pitch, tifos and curva viewport
+ui/                           # widgets.gd, lobby.gd, career_map.gd, soundcheck.gd,
+                               # match_hud.gd and independent touch_controls.gd
+audio/tifo_audio.gd            # original synthesis and audible playback clock
+presentation/stage.gd          # shared original-model setup/store/gallery/share stage
+character_preview.tscn, store_preview.tscn, gallery_stage.tscn, share_art.tscn
+assets/                       # captured icon/ground/intro stills and tutorial/poster
+tests/                        # actual suites and event/platform fixtures (§15)
+tools/                        # validate.ps1, capture_art.gd, tutorial_driver.gd,
+                               # numeric sound_spike and chart_preview scenes/scripts
 ```
+
+The lobby builds identity/workshop controls through the game-owned widgets;
+there are no separate identity-editor/workshop scene wrappers. Steward props
+share `world/props.gd`. There is no raw bleed recorder or recorded-fixture folder.
 
 ### 14.2 Model / view split
 
-Everything under `sound/` (except `mic_capture.gd` and the source nodes),
-`chart/`, `match/`, `career/`, `workshop/` and `steward/` is `RefCounted`.
+Everything under `sound/` (except `mic_capture.gd`), `chart/`, `match/`,
+`career/`, `workshop/` and `steward/` is a node-free `RefCounted` or `Resource`.
 It touches **no autoload and no node**, and it is what the headless tests
 exercise. `gameplay.gd` collects `SoundFrame`s from the active source,
 classifies them, gates them, feeds `match_state.gd` and hands the state to
@@ -1192,9 +1196,10 @@ Copy the signatures exactly from `AGENTS.md`.
 A shell **round is one match** (or one chant war, or one full set of
 hot-seat turns). With `uses_shell_round_rules = false`, the match ends by its
 own rules: the final whistle or a walkout (§3.4). Gameplay then calls the
-shell's normal end-of-round path, as Cube Trials does. The soundcheck,
-workshop, steward checks and career map are game-owned screens **outside**
-the round, so the shell's countdown and results stay one match long.
+shell's normal end-of-round path, as Cube Trials does. The soundcheck and career lobby are game-owned overlays; a career performance can
+include its workshop/steward preparation and half-time war in the same shell
+round. Practice modes can finish their own result without career progression.
+First entry is the inactive lobby; replay immediately starts a fresh round.
 `_round_totals` reports Noise. `_player_stats` reports Noise, stars, accuracy,
 best combo, tifos, Fury uses, match score and the assist badge.
 
@@ -1210,7 +1215,7 @@ game.intro_scene_path = "res://games/tifo_beato/intro.tscn"
 game.control_style = GameManifest.CONTROL_STYLE_CUSTOM_KEYS
 game.uses_shell_round_rules = false
 game.supports_multiplayer = true                # hot seat (§9.3)
-game.supports_cpu_opponent = true               # rival capos (§6.5)
+game.supports_cpu_opponent = false              # solo rival wars are game-owned
 game.max_local_players = 2
 game.local_multiplayer_turns = true
 game.levels = Options.GROUNDS                   # §8.1, achievement-gated
@@ -1226,51 +1231,52 @@ game.theme = theme                              # §12.3
 
 ### 14.5 Integration checklist (outside this folder)
 
-- [ ] `project.godot`: `config/name.tifo_beato`,
+- [x] `project.godot`: `config/name.tifo_beato`,
       `config/custom_user_dir_name.tifo_beato="DeskCanSaw Games/Tifo Beato"`
-      (stable forever once shipped, so confirm the title first),
+      (approved and stable forever),
       `config/icon.tifo_beato`, `dcs/build/single_game_id.tifo_beato`,
       `[share] stats_urls/tifo_beato`. Keep `audio/driver/enable_input=true`
       for the tag.
-- [ ] `export_presets.cfg`: a standalone preset with the tag and the
+- [x] `export_presets.cfg`: Windows/Web/Android/iOS presets with the tag and the
       microphone / record-audio permission on mobile. Add `games/tifo_beato/*`
-      to the other presets' `exclude_filter`, and keep `tools/` out.
-- [ ] `.gitmodules` and gitlink (the remote already exists:
-      `git@github.com:jraleman/tifo_beato.git`) — two commits.
-- [ ] Root `AGENTS.md`: games table, submodule list, options-file list, test
+      to the other standalone presets' `exclude_filter`, and keep tests/tools out.
+      Packaging does not complete mobile signing/device certification.
+- [x] Existing `.gitmodules` and gitlink registration retained:
+      `git@github.com:jraleman/tifo_beato.git`. Task changes stay uncommitted.
+- [x] Root `AGENTS.md`: games table, submodule list, options-file list, test
       table, feature-tag list and a per-game blurb. Update `godot-base/README.md`
       if it lists games.
-- [ ] Run `--import` after adding any `class_name`, and prefer preload-by-path.
+- [x] Import, game suites, real-window checks and shared integration sweep.
+      The shared aggregate video check remains blocked by Puppy Kraft's missing
+      recording; all Tifo media checks pass. Prefer preload-by-path.
 
 ---
 
 ## 15. Tests — `tests/`
 
-These run headless unless noted. Each one is a standalone `SceneTree` script
-that exits 0.
+These are the actual suite names. They run headless unless noted, as standalone
+`SceneTree` scripts. `tools/validate.ps1` provides an isolated project/user
+directory and rejects unexpected engine diagnostics even with exit code 0.
 
 | Suite | Covers |
 | --- | --- |
-| `sound_classifier_test.gd` | Synthesized claps, stamps, shouts (voiced and unvoiced), sung bands and silence classify correctly; drum rolls at 12 hits/s stay separate; thresholds quoted from constants |
-| `bleed_test.gd` | The guide drum produces no onset; known-output gate drops emitted transients but keeps louder player hits; recorded room captures stay under the false-onset target; every disruption pattern lands off-grid |
-| `latency_calibration_test.gd` | Clap offsets → latency; spread rejection; low-thump click never reads as an onset |
-| `chart_test.gd` | Every chant loads; notes on the grid; lyric slot syllables fit; phrases loop cleanly; every disruption slot is off-grid; match charts are seed-stable |
-| `chant_judge_test.gd` | Windows, grades, volume and pitch scales, capped carry, combo tiers and banking, Rest notes; every assist scores ≥ the same performance without it; keys vs voice within 5 % on the same ideal performance |
-| `chant_life_test.gd` | Drains only in call halves after the grace; refills; mocking at 25; death, rally and restart; morale and walkout; Chant never dies |
-| `fury_test.gd` | Charging by shout and by Perfect, capped at carry; clap path vs shout path within 10 %; activation by long shout and by key; one per half; power-ups by triple shout |
-| `match_sim_test.gd` | Same seed + energy curve → identical match; energy biases the outcome in the documented direction; goal moments; no outcome is certain at max energy |
-| `crowd_state_test.gd` | Perfect tightens sync, Miss scatters; the response plays back the scatter; energy smoothing |
-| `chaos_events_test.gd` | Every event runs to completion under a scripted "win" input and a scripted "lose" input with the documented result |
-| `chant_war_test.gd` | Echo judged against the rival's call; free-form call scoring; escalation; every rival capo plays a valid stream; verdict |
-| `workshop_test.gd` | Budget accounting; build race quality; mishaps seeded and applied; the word list is closed and filtered |
-| `career_test.gd` | Stars and promotion; ground gates from a fresh profile; quick play never changes the career; records merge and never regress; identity round-trips |
-| `steward_test.gd` | Both mini-games: freeze rules, hum stability, success and the gentle failure |
-| `commentator_test.gd` | Every model event has a line and a caption; cooldowns; no repeat; never over a telegraph; voiced lines only outside call halves |
-| `tifo_scene_test.gd` | Gameplay loads under the shell; the HUD binds; pause; results; payout; the Pass the megaphone card; Buttons path end to end |
-| `curva_view_test.gd` *(window)* | Real render: capo, curva and beat lane in shot; mosaic samples the banner; < 90 draw calls at the Final; portrait → ultrawide; touch pads clear of the lane |
+| `sound_test.gd` | Synthesized PCM classification, pitch, calibration, source parity, guide/known-output gating and capture cleanup; no physical microphone is opened |
+| `model_test.gd` | All original charts, judge/assists/life/Fury, deterministic football, fixed-duration goals, persistent chaos ledgers, safe disruptions, wars/stewards, banner images, career/records and compensated handoff/output clocks |
+| `scene_test.gd` | All owned scripts compile; actual lobby/replay/handoff releases, store/fabric preferences, synthesized responses, compact inventory accessibility, late/safe rival audio, digital-silence errors and developer previews |
+| `flow_test.gd` | Complete genuine keyboard/touch input through Quick, workshop, both stewards, war, career and all three hot-seat modes; actual accuracy/stars/earnings and no non-career progression |
+| `curva_view_test.gd` *(window)* | Physical sizes/UI scales, real keyboard/touch play, complete cast/camera/effect/model/share geometry, lane/pad separation, all five story cards in 30 layout cases, and <90 visible+shadow Final draws (measured 32) |
 
-The framework suites pick the game up automatically. Run them all with
-`--game=all` before calling a milestone done.
+`flow_fixture.gd` dispatches real events, never grades. `platform_fixture.gd`
+extends Node and is wrapped by `platform_test.tscn` only in a separate QA
+export. It verifies actual packed-engine full input, payout, capture cleanup,
+branding/exclusions and real tutorial decoding. Browser checks use a deny-only
+microphone stub and exercise the real Start/Use Buttons actions; they never
+grant hardware access. Neither fixtures nor tools ship in production packs.
+
+The fifteen framework suites discover the manifest automatically. Fourteen
+pass; the aggregate walkthrough check currently fails because unrelated
+`puppy_kraft` declares no recording. Tifo's video decodes on native and web.
+Hardware and owner-review gates are not replaced by these checks.
 
 ---
 
@@ -1278,8 +1284,8 @@ The framework suites pick the game up automatically. Run them all with
 
 1. **Sound spike.** ⚠ The riskiest part. Copy the mic stack, then build the
    classifier, the bleed gate, the guide drum and latency calibration, with a
-   debug 2D readout and no art. Record real rooms (laptop speakers, a phone,
-   a TV, headphones) with `tools/bleed_recorder.tscn`. *Goal: it hears you
+   explicit-start numeric readout. Verify real rooms (laptop speakers, a phone,
+   a TV, headphones) without saving raw audio. *Goal: it hears you
    and only you.* Targets: ≥ 90 % correct clap / shout / sing classification
    across three testers, under one false onset per minute of match audio on
    laptop speakers, and Perfect hits reachable after calibration.
@@ -1317,32 +1323,27 @@ career; localisation (Italian, Spanish, German); a "be the steward" mode.
 
 ---
 
-## 17. Open questions for the owner
+## 17. Approved decisions and remaining release review
 
-1. **Title.** "Tifo Beato" exactly, with that spelling and capitalization? The
-   title fixes `custom_user_dir_name` forever. Is the tagline "Ninety minutes.
-   No silence." okay?
-2. **Groups vs your curva** (§7.2–§7.3). Are the Old Guard, Drum Maniacs, Flag
-   Wizards and Chaos Kids **sections inside the player's own curva** (the
-   recommendation), or separate groups the player becomes?
-3. **Voice health** (§4.6). Is the "relative, capped loudness" rule right for a
-   game whose pitch is shouting? Should louder-than-carry earn anything at all?
-4. **Crowd recordings** (§10.6). Can we record a real group of a dozen people
-   for the crowd responses and rival chants? Who voices the capo?
-5. **The commentator's voice** (§9.5). Recorded voice-over in v1, or captions
-   only until later? Who voices them?
-6. **Free text** (§6.4, §8.4). Is a closed word list okay for banners, club
-   names and lyric slots, with free text off by default? Free text on a share
-   card needs a profanity filter at least.
-7. **Smoke and pyro** (pillar 5, §6.1). Is cartoon smoke in club colours fine,
-   with no flares at all?
-8. **Insults and rival names** (§6.5). Are the comic rival clubs (Lokomotiv
-   Lasagne, Borussia Bratwurst, Sporting Sardinas…) and the insult tone okay?
-   Who reviews the bank?
-9. **Progression** (§5.2, §8.2). Is it okay that career progress depends on
-   stars only and a lost match can still promote you?
-10. **Original chants** (§9.1). Who composes the 24 chants, and who checks that
-    no melody is an existing song?
-11. **Daily derby day boundary** (§11.4). Local midnight (friendlier) or UTC
-    (fair across time zones on a future online board)?
-12. **Hot seat in v1** (§9.3). Are all three modes in v1, or only Duel?
+| Topic | Owner-approved decision |
+| --- | --- |
+| Scope | Full v1, milestones 0–11; adjacent framework integration authorized |
+| Title | Tifo Beato — Ninety minutes. No silence. |
+| Groups | Sections inside the player's own curva |
+| Comfort | Relative capped loudness; no extra reward above comfortable carry |
+| Audio | Original procedural chants and synthesized capo/crowd; no recording requirement |
+| Commentator | Captions only in v1 |
+| Text | Curated club/group/banner words, no free text |
+| Smoke | Cartoon smoke, no flares |
+| Rivals | Fictional, gentle humour; owner reviews names/copy/content before release |
+| Progression | Stars can promote even when the football team loses |
+| Melodies | Original synthesis; owner reviews originality/content before release |
+| Hot seat | Duel, Two Capos and Split the Stands |
+| Platforms | Desktop/web/mobile support; physical-device checks remain required |
+| Daily boundary | Deferred with milestone 15; no v1 daily mode |
+
+Unfinished release gates are tracked in `TODO.md`: three-tester physical
+classification/calibration, speaker bleed, real gamepad/multitouch, granted
+recording and platform/GPU tests, mobile signing and owner melody/copy review.
+Do not mark them complete from synthetic PCM, package exports or deny-only
+browser tests. Work remains unstaged/uncommitted as requested.

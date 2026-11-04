@@ -1,0 +1,4 @@
+.godot/
+*.tmp
+assets/video/*.avi
+tools/recordings/
