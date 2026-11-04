@@ -115,7 +115,7 @@ func _stop_instrument() -> void:
 
 ## Missing/sloppy hits really change the response, rather than playing a perfect chart.
 func response(call: Array[Dictionary], call_start: float, seconds: float,
-	scatter: float, megaphone := false) -> void:
+	scatter: float, megaphone := false, style := 0) -> void:
 	var samples := PackedFloat32Array()
 	samples.resize(ceili(seconds * RATE))
 	var first_offset := 0.0
@@ -133,7 +133,8 @@ func response(call: Array[Dictionary], call_start: float, seconds: float,
 			continue
 		var note: Dictionary = result["note"]
 		var band := int(result.get("band", 0)) if str(result["kind"]) in ["sing", "hold"] else 0
-		var voice: PackedFloat32Array = _voices.get(band, _voices[0])
+		var voice: PackedFloat32Array = _cue_samples("beat") if style == 1 else (
+			_voices.get(clampi(band + 1, -1, 1) if style == 2 else band, _voices[0]))
 		for layer in 6:
 			var offset := float(note["t"]) - call_start + float(result["error"]) \
 				+ scatter * (layer - 2.5) * 0.15

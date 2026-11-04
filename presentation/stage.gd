@@ -189,7 +189,7 @@ func _share(data: Dictionary) -> void:
 	capo.position.x = -1.5
 	model_root.add_child(capo)
 	capo.pose(80.0, false, 0.0, true)
-	if str(data.get("tb_mode_snapshot", "")) == "workshop":
+	if str(data.get("tb_mode_snapshot", "")) == "workshop" or bool(data.get("tb_mural_snapshot", false)):
 		capo.scale = Vector3.ONE * 0.55
 		capo.position.x = -2.2
 		_banner_quad(banner, Vector3(0.2, 1.7, -0.6), Vector2(4.8, 2.4))
@@ -204,6 +204,13 @@ func _share(data: Dictionary) -> void:
 		str(data.get("tb_club_snapshot", "YOUR CURVA")), Options.GROUNDS[ground]["title"],
 		int(data.get("tb_stars", 0)), int(scores[0]), str(data.get("tb_football", "0 : 0")),
 		" | ASSISTED" if bool(data.get("tb_assisted", false)) else ""], Vector3(0, 3.8, 0))
+	if data.has("tb_daily_snapshot"):
+		var daily: Dictionary = data["tb_daily_snapshot"]
+		_placard("DAILY %s | SEED %d\n%s | %s\n%s | STREAK %d%s" % [
+			daily["date"], daily["seed"], Options.GROUPS[int(daily["pool"])]["title"],
+			Options.GROUNDS[ground]["title"], daily["title"], int(data.get("tb_daily_streak", 0)),
+			" | ASSISTED" if bool(data.get("tb_assisted", false)) else ""],
+			Vector3(0, -0.5, 0))
 	_focus = Vector3(0, 1.4, 0)
 	_distance = 7.4
 

@@ -5,6 +5,7 @@ extends RefCounted
 const Options = preload("res://games/tifo_beato/tifo_beato_options.gd")
 var game: Node
 var use_touch := false
+var pitch_shift := 0
 var _held: Array[Dictionary] = []
 var _played: Dictionary = {}
 var _pointer := -1
@@ -64,7 +65,8 @@ func tick(render_every := 4) -> void:
 				action = Options.BEAT_LEFT if _beat_hand % 2 == 0 else Options.BEAT_RIGHT
 				_beat_hand += 1
 			elif kind == "sing" or kind == "hold" and str(note.get("hold_kind", "shout")) == "sing":
-				action = [Options.SING_LOW, Options.SING_MID, Options.SING_HIGH][int(note.get("band", 0)) + 1]
+				action = [Options.SING_LOW, Options.SING_MID, Options.SING_HIGH][
+					clampi(int(note.get("band", 0)) + pitch_shift, -1, 1) + 1]
 			_pointer = _new_pointer()
 			var contact := {"action": action, "pointer": _pointer,
 				"end": now + (0.04 if kind == "beat" else maxf(0.22, float(note["duration"])))}
@@ -84,7 +86,14 @@ func tick(render_every := 4) -> void:
 
 func _notes(stage: String, model: RefCounted) -> Array[Dictionary]:
 	var notes: Array[Dictionary] = []
-	if stage in ["match", "workshop"]:
+	if stage == "match" and str(game.get("_mode")) == "creator_record":
+		var phase: Dictionary = model.get("chart").get("phases")[1]
+		for pulse in 8:
+			var beat := float(phase["beat"])
+			var kind := "beat" if pulse % 3 == 0 else ("sing" if pulse % 3 == 1 else "shout")
+			notes.append({"id": pulse, "t": float(phase["t"]) + pulse * beat,
+				"kind": kind, "duration": 0.25 if kind != "beat" else 0.0, "band": pulse % 3 - 1})
+	elif stage in ["match", "workshop"]:
 		notes.assign(model.get("judge").get("notes"))
 	elif stage == "war" and int(model.get("phase")) > 0:
 		var judge: RefCounted = model.get("judge")

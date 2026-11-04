@@ -84,7 +84,7 @@ func observe(frame: Frame, dt := 0.01) -> void:
 			continue
 		var start := float(note["t"])
 		var duration := float(note["duration"])
-		if frame.t < start or frame.t >= start + duration:
+		if frame.t < start - 0.000001 or frame.t >= start + duration - 0.000001:
 			continue
 		if str(note["kind"]) == "rest":
 			if frame.level >= 0.08:
@@ -143,8 +143,8 @@ func accuracy() -> float:
 
 func rest_protected(time: float) -> bool:
 	for note in notes:
-		if str(note["kind"]) == "rest" and time >= float(note["t"]) \
-			and time <= float(note["t"]) + float(note["duration"]):
+		if str(note["kind"]) == "rest" and time >= float(note["t"]) - 0.000001 \
+			and time < float(note["t"]) + float(note["duration"]) - 0.000001:
 			return not bool(note["rest_broken"])
 	return false
 

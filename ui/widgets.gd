@@ -17,6 +17,7 @@ static func label(parent: Node, text: String, heading := false) -> Label:
 static func button(parent: Node, text: String, action: Callable) -> Button:
 	var node := Button.new()
 	node.text = text
+	node.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	node.accessibility_name = text
 	node.tooltip_text = text
 	node.custom_minimum_size.y = 72
@@ -37,7 +38,8 @@ static func choice(parent: Node, title: String, values: Array,
 	node.add_theme_font_size_override("font_size", 23)
 	for value: Variant in values:
 		node.add_item(str(value))
-	node.select(selected)
+	if not values.is_empty():
+		node.select(clampi(selected, 0, values.size() - 1))
 	node.item_selected.connect(action)
 	parent.add_child(node)
 	return node
@@ -51,6 +53,22 @@ static func toggle(parent: Node, title: String, checked: bool,
 	node.custom_minimum_size.y = 72
 	node.add_theme_font_size_override("font_size", 23)
 	node.toggled.connect(action)
+	parent.add_child(node)
+	return node
+
+static func number(parent: Node, title: String, minimum: float, maximum: float,
+	step: float, value: float, action: Callable) -> SpinBox:
+	label(parent, title)
+	var node := SpinBox.new()
+	node.min_value = minimum
+	node.max_value = maximum
+	node.step = step
+	node.value = value
+	node.custom_minimum_size.y = 72
+	node.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	node.accessibility_name = title
+	node.get_line_edit().add_theme_font_size_override("font_size", 23)
+	node.value_changed.connect(action)
 	parent.add_child(node)
 	return node
 
@@ -72,12 +90,12 @@ static func panel(parent: Node) -> VBoxContainer:
 static func scale_tree(root: Node, factor: float) -> void:
 	if root is Control:
 		var control := root as Control
-		if control is Label or control is BaseButton:
+		if control is Label or control is BaseButton or control is LineEdit or control is TextEdit:
 			if not control.has_meta("tifo_base_font"):
 				control.set_meta("tifo_base_font", control.get_theme_font_size("font_size"))
 			control.add_theme_font_size_override("font_size",
 				roundi(float(control.get_meta("tifo_base_font")) * factor))
-		if control is BaseButton:
+		if control is BaseButton or control is SpinBox:
 			control.custom_minimum_size.y = 72 * factor
 		if control is BoxContainer:
 			control.add_theme_constant_override("separation", roundi(10 * factor))

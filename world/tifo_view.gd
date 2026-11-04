@@ -40,7 +40,8 @@ func configure(seats: Array[Transform3D], design: Banner) -> void:
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	banner_mesh.material_override = material
 
-func present(tier: int, reveal: float, time: float, reduced: bool, intense: bool) -> void:
+func present(tier: int, reveal: float, time: float, reduced: bool, intense: bool,
+	instant := false) -> void:
 	if cards == null:
 		return
 	var target := tier if reveal > 0.0 else 0
@@ -50,6 +51,9 @@ func present(tier: int, reveal: float, time: float, reduced: bool, intense: bool
 		_target_tier = target
 		if target > 0:
 			_draw_tier = target
+	if instant:
+		_fade_start = time - 0.45
+		_fade_from = 1.0 if target > 0 else 0.0
 	var alpha := clampf((time - _fade_start) / 0.45, 0.0, 1.0) if reduced else 1.0
 	_opacity = lerpf(_fade_from, 1.0 if target > 0 else 0.0, alpha)
 	if not reduced:

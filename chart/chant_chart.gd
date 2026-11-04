@@ -7,6 +7,7 @@ const Phrase = preload("res://games/tifo_beato/chart/chant_phrase.gd")
 @export var title := ""
 @export var tempo := 100.0
 @export var pool := 0
+@export var response_style := 0
 @export var phrases: Array[Phrase] = []
 
 func duration_beats() -> float:

@@ -69,6 +69,8 @@ func present() -> void:
 			"FURY %d%s" % [roundi(state.fury.charge), maximum], "ENERGY %d | %d:%d" % [
 				roundi(state.crowd.energy), state.sim.home, state.sim.away],
 		]))
+		if bool(state.get("_settings").get("practice", false)):
+			_metrics.resize(4)
 		var lyric := str(_phase["lyric"]).replace("{CLUB}", club)
 		_instruction = "%s - %s" % [str(_phase["kind"]).to_upper(), lyric]
 		if state.life.dead:

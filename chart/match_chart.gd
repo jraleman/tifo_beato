@@ -19,47 +19,33 @@ var loop_count := 0
 var speed := 1.0
 
 func _init(seed_value := 1, pool := 0, speed_percent := 100, with_war := false,
-	half_seconds := 120.0, walkin_seconds := 20.0) -> void:
+	half_seconds := 120.0, walkin_seconds := 20.0,
+	custom_charts: Array[Chart] = [], single_pass := false) -> void:
 	speed = clampf(float(speed_percent) / 100.0, 0.7, 1.0)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
 	var charts: Array[Chart] = []
-	for chart in Chants.all():
-		if chart.pool == pool:
-			charts.append(chart)
+	if not custom_charts.is_empty():
+		charts.assign(custom_charts)
+	else:
+		for chart in Chants.all():
+			if chart.pool == pool:
+				charts.append(chart)
 	assert(not charts.is_empty(), "A group must have original chants.")
 	phases.append({"t": 0.0, "end": walkin_seconds, "kind": "walkin",
 		"lyric": "ELEVEN STRONG. FIND YOUR TEMPO.", "half": 1, "loop": -1, "beat": 0.6})
 	duration = walkin_seconds
+	if single_pass:
+		for chant in charts:
+			_append_chant(chant, 1)
+		halftime_start = duration
+		halftime_end = duration
+		return
 	for half in [1, 2]:
 		var end_target := duration + half_seconds / speed
 		while duration < end_target - 0.001:
 			var chant := charts[rng.randi_range(0, charts.size() - 1)]
-			var beat := 60.0 / chant.tempo / speed
-			for phrase in chant.phrases:
-				var start := duration
-				var phase := {"t": start, "end": start + phrase.call_beats * beat,
-					"kind": "sustain" if phrase.sustain else "call", "half": half,
-					"lyric": phrase.lyric, "chant": chant.title, "loop": loop_count,
-					"beat": beat, "template": phrase.notes.duplicate(true)}
-				phases.append(phase)
-				for note in phrase.notes:
-					var entry := note.duplicate(true)
-					entry["t"] = start + float(note["beat"]) * beat
-					entry["duration"] = float(note["duration"]) * beat
-					entry["phase"] = phases.size() - 1
-					entry["id"] = notes.size()
-					notes.append(entry)
-				for pulse in ceili(phrase.call_beats):
-					beats.append(start + pulse * beat)
-				duration = float(phase["end"])
-				if not phrase.sustain:
-					phases.append({"t": duration, "end": duration + phrase.response_beats * beat,
-						"kind": "response", "half": half, "lyric": phrase.lyric,
-						"chant": chant.title, "loop": loop_count, "beat": beat,
-						"call_phase": phases.size() - 1})
-					duration += phrase.response_beats * beat
-			loop_count += 1
+			_append_chant(chant, half)
 		if half == 1:
 			halftime_start = duration
 			var break_seconds := 32.0
@@ -72,11 +58,39 @@ func _init(seed_value := 1, pool := 0, speed_percent := 100, with_war := false,
 			duration += break_seconds
 			halftime_end = duration
 
+func _append_chant(chant: Chart, half: int) -> void:
+	var beat := 60.0 / chant.tempo / speed
+	for phrase in chant.phrases:
+		var start := duration
+		var phase := {"t": start, "end": start + phrase.call_beats * beat,
+			"kind": "sustain" if phrase.sustain else "call", "half": half,
+			"lyric": phrase.lyric, "chant": chant.title, "loop": loop_count,
+			"beat": beat, "template": phrase.notes.duplicate(true)}
+		phases.append(phase)
+		for note in phrase.notes:
+			var entry := note.duplicate(true)
+			entry["t"] = start + float(note["beat"]) * beat
+			entry["duration"] = float(note["duration"]) * beat
+			entry["phase"] = phases.size() - 1
+			entry["id"] = notes.size()
+			notes.append(entry)
+		for pulse in ceili(phrase.call_beats):
+			beats.append(start + pulse * beat)
+		duration = float(phase["end"])
+		if not phrase.sustain:
+			phases.append({"t": duration, "end": duration + phrase.response_beats * beat,
+				"kind": "response", "half": half, "lyric": phrase.lyric,
+				"chant": chant.title, "loop": loop_count, "beat": beat,
+				"response_style": chant.response_style, "call_phase": phases.size() - 1})
+			duration += phrase.response_beats * beat
+	loop_count += 1
+
 func phase_index(time: float) -> int:
-	if time < 0.0:
+	if time < -0.000001:
 		return 0
 	for index in phases.size():
-		if time >= float(phases[index]["t"]) and time < float(phases[index]["end"]):
+		if time >= float(phases[index]["t"]) - 0.000001 \
+			and time < float(phases[index]["end"]) - 0.000001:
 			return index
 	return phases.size() - 1
 
@@ -84,7 +98,7 @@ func phase_at(time: float) -> Dictionary:
 	return phases[phase_index(time)]
 
 func is_judging(time: float) -> bool:
-	return time >= 0.0 and time < duration \
+	return time >= -0.000001 and time < duration - 0.000001 \
 		and str(phase_at(time)["kind"]) in ["call", "sustain", "celebration", "defiance"]
 
 ## Shared verses get a safe count-in without changing a single authored note.

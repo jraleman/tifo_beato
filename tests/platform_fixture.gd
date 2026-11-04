@@ -3,6 +3,8 @@ extends Node
 ## A separate validation export drives real events, never authored grades.
 
 const Options = preload("res://games/tifo_beato/tifo_beato_options.gd")
+const Creator = preload("res://games/tifo_beato/chart/chant_creator.gd")
+const Records = preload("res://games/tifo_beato/career/records.gd")
 var fixture_path := "res://games/tifo_beato/tests/flow_fixture.gd"
 var use_touch := false
 var latency := 0.0
@@ -68,6 +70,8 @@ func _run() -> void:
 	var report := {"noise": state.call("noise"), "stars": state.call("stars"),
 		"accuracy": accuracy, "hits": state.get("judge").get("hits"),
 		"touch": use_touch, "latency_ms": latency, "tokens": paid, "ticks": ticks}
+	report["expanded"] = await _test_expanded(game, script, buses)
+	report["replay"] = await _test_replay(game)
 	tree.root.remove_child(game)
 	game.free()
 	await tree.process_frame
@@ -75,6 +79,111 @@ func _run() -> void:
 	if OS.has_feature("web"):
 		report["microphone_denial"] = await _test_denied_microphone()
 	_report(report)
+
+func _test_expanded(game: Node, script: Script, buses: int) -> Array:
+	var summaries: Array = []
+	var store := get_tree().root.get_node("Store")
+	var requests: Array[Dictionary] = [
+		{"mode": "away_bus", "ground": 0, "tempo": 180},
+		{"mode": "away_station", "ground": 0},
+		{"mode": "derby_ritual", "ground": 3, "ritual": "pub"},
+		{"mode": "creator_record", "ground": 0},
+		{"mode": "creator_practice", "ground": 0},
+		{"mode": "daily", "ground": 0},
+	]
+	for request in requests:
+		var before := int(store.call("points", Options.GAME_ID))
+		if request["mode"] == "creator_practice":
+			request["chant"] = game.get("_creator").call("payload")
+		game.get("_audio").set("manual_time", 0.0)
+		request["seed"] = 2026
+		game.set("_request", request)
+		game.call("_start_round")
+		game.set_process(false)
+		await get_tree().process_frame
+		var driver: RefCounted = script.new(game, use_touch)
+		var ticks := 0
+		var handoffs := 0
+		while bool(game.get("_round_active")) and ticks < 90000:
+			if bool(game.get("_input_locked")):
+				driver.call("release_all")
+				game.call("_process", 0.0)
+				var ready := game.get("_ready_button") as Button
+				_check(ready != null and not ready.disabled,
+					"Exported handoffs must unlock after genuine contact release.")
+				if ready == null:
+					break
+				ready.grab_focus()
+				_press_enter()
+				handoffs += 1
+				await get_tree().process_frame
+			driver.call("tick", 4)
+			ticks += 1
+			if ticks % 100 == 0:
+				await get_tree().process_frame
+		driver.call("release_all")
+		_check(bool(game.get("_set_complete")), "The exported engine must finish " + str(request["mode"]))
+		var accuracy := 1.0
+		var hits := 0
+		for completed: RefCounted in game.get("_completed_states"):
+			accuracy = minf(accuracy, float(completed.get("judge").call("accuracy")))
+			hits += int(completed.get("judge").get("hits"))
+		if request["mode"] != "creator_record":
+			_check(accuracy > 0.94 and hits > 0,
+				"Real exported events must accurately judge " + str(request["mode"]))
+		var paid := int(store.call("points", Options.GAME_ID)) - before
+		_check(paid > 0 and paid <= 120 if request["mode"] == "daily" else paid == 0,
+			"Only completed Daily may pay among expanded export activities.")
+		_check(game.get("_source").get("capture") == null and AudioServer.bus_count == buses,
+			"Expanded exported Buttons play cannot capture or leak a bus.")
+		if request["mode"] == "creator_record":
+			var data: Dictionary = game.get("_creator").call("payload")
+			_check(Creator.validate(data).is_empty() and data["notes"].size() >= 6,
+				"The exported recorder must capture real classified musical data.")
+			var editor: Control = game.get("_lobby").get("editor")
+			editor.call("_save")
+			_check(game.get("_records").get("data")["chants"].has("0"),
+				"The exported editor's actual Save action must write a slot.")
+			(editor.get("_code") as TextEdit).text = game.get("_creator").call("code")
+			editor.call("_import")
+			_check(game.get("_creator").call("payload") == data,
+				"Canonical chant codes must round-trip through the exported editor.")
+		elif request["mode"] == "daily":
+			var date := str(game.get("_request")["date"])
+			_check(handoffs >= 6 and not (game.get("_war_results") as Array).is_empty()
+				and game.get("_records").get("data")["daily"].has(date)
+				and game.call("_share_payload").has("tb_daily_snapshot"),
+				"The exported Daily must really run its rival, record its date and freeze its share.")
+		summaries.append({"mode": request["mode"], "hits": hits, "accuracy": accuracy,
+			"tokens": paid, "handoffs": handoffs, "ticks": ticks})
+		print("TIFO_EXPANDED ", JSON.stringify(summaries[-1]))
+	return summaries
+
+func _test_replay(game: Node) -> bool:
+	var records: RefCounted = game.get("_records")
+	var clips: Array = records.get("data")["moments"]
+	if clips.is_empty():
+		_check(false, "Exported genuine play must retain replayable numeric moments.")
+		return false
+	var before := JSON.stringify(records.get("data"))
+	var bytes := FileAccess.get_file_as_bytes(Records.SAVE_PATH)
+	var store := get_tree().root.get_node("Store")
+	var wallet := int(store.call("points", Options.GAME_ID))
+	game.call("_show_replay", 0)
+	await get_tree().process_frame
+	var seek := game.get("_replay_seek") as HSlider
+	seek.value = seek.max_value
+	seek.value = seek.min_value
+	game.call("_update_replay", 0.0)
+	await get_tree().process_frame
+	game.call("_show_lobby", 8)
+	await get_tree().process_frame
+	var unchanged := JSON.stringify(records.get("data")) == before \
+		and FileAccess.get_file_as_bytes(Records.SAVE_PATH) == bytes \
+		and int(store.call("points", Options.GAME_ID)) == wallet \
+		and game.get("_source").get("capture") == null
+	_check(unchanged, "Exported 3D replay and seek cannot capture, score, pay or change saved bytes.")
+	return unchanged
 
 func _test_tutorial(settings: Node) -> bool:
 	settings.call("set_value", "accessibility/reduced_motion", false)

@@ -1,7 +1,8 @@
-# Tifo Beato - v1 implementation and release gates
+# Tifo Beato - implementation and release gates
 
-The owner approved full v1 (milestones 0-11), all three hot-seat modes,
-desktop/web/mobile support and adjacent framework integration. Checked items
+The owner approved full v1 and the expansion (milestones 0-15), all three
+original hot-seat modes, desktop/web/mobile and adjacent framework integration.
+Daily resets at local midnight; Creator lyrics remain curated. Checked items
 below have working code and automated evidence. **Hardware, signing and owner
 review are separate unchecked gates, not inferred successes.** Task changes
 remain unstaged/uncommitted.
@@ -20,6 +21,7 @@ The host `AGENTS.md` framework boundary still takes precedence.
 - [x] Duel, Two Capos and Split the Stands in v1.
 - [x] Owner melody/rival-copy/content review remains mandatory before release.
 - [x] Menu order 12 retained after Dolce's Adventure, Sailor Man and Capitan's Walk.
+- [x] Milestones 12-15 approved; local-midnight Daily Derby and curated Creator lyrics.
 
 ## Phase 0 - Framework contract
 
@@ -104,11 +106,10 @@ The host `AGENTS.md` framework boundary still takes precedence.
   UI checks, including after judged input, not only time-zero screenshots.
 - [x] All original cast/effect/camera/gallery/store/share geometry in shot;
   Cathedral roof framing corrected; Final visible+shadow draws measured 32/90.
-- [x] Fourteen shared-framework suites pass, including lobby-first replay,
+- [x] All fifteen shared-framework suites pass, including lobby-first replay,
   untimed rules, intro, availability, saves, store and share integration.
 - [x] Tifo's actual Instructions video decodes on native and exported web.
-- [ ] Entire collection tutorial sweep green: unrelated `puppy_kraft` has no
-  walkthrough, so the aggregate fifteen-suite run correctly exits 1.
+- [x] Entire collection tutorial sweep green, including Tifo's actual clip.
 - [x] Windows and web release exports; actual native release boot and production
   PCK input/video checks; full pack exclusion/branding audits.
 - [x] Exported web full matches: portrait touch/+400 ms and desktop keys/-100 ms,
@@ -135,15 +136,45 @@ The host `AGENTS.md` framework boundary still takes precedence.
   behavior on desktop, secure web and mobile. Denied browser tests are not
   proof of granted-capture correctness.
 - [ ] Mobile GPU, thermal/audio budget, touch layout and runtime permission
-  validation on real hardware.
+  validation on real hardware, including Android's template themed-icon warning.
 - [ ] Release signing/distribution verification for Android.
 - [ ] Apple toolchain, team/provisioning, signed iOS build and actual iOS device.
 
-## Post-v1 only
+## Milestones 12-15 - Approved expansion
 
-- [ ] Milestone 12: Away days.
-- [ ] Milestone 13: Derby week.
-- [ ] Milestone 14: Chant Creator and chant codes.
-- [ ] Milestone 15: Daily derby and Best Moments; date boundary still undecided.
+- [x] Away bus at 60-180 BPM with real wipers/pothole Rests; station echoes
+  have real silence judgements. Safe hostile slots double, respecting Gentle/Off.
+- [x] Optional bus/train/skip before away career stops; travel does not pay,
+  advance stars or contaminate match scores.
+- [x] Mural, derby rehearsals and pub/bakery/barber recruitment with original
+  neighbourhood geometry. Mural results preserve the match banner.
+- [x] Best-only ritual preparation caps at +25 morale and +25% crowd at
+  Cathedral stop 4; no repeat stacking, payout or kickoff gate.
+- [x] Creator records the same accepted classified events; editable 1-8 bar
+  sixteenth grid, 60-180 BPM, 64-note limit, curated lyrics and three responses.
+- [x] Eight explicit save slots and bounded, canonical checked `TB1` musical
+  codes; invalid imports preserve drafts. Quantized sustains remain classifiable.
+- [x] Unranked Creator practice and identical-chart successive two-human
+  challenges; independent timing profiles, real handoff and equal fixture scores.
+- [x] Local-midnight seeded Daily Derby with actual selected modifier/rival,
+  frozen match date, local bests/streaks and complete daily share badges.
+- [x] Twelve numeric Best Moments with frozen styles and actual 3D seek/play;
+  no PCM, input capture, scoring, payout or progress/file changes.
+- [x] Stale-save merges preserve independent chant slots, ritual maxima,
+  daily history and deduplicated clips.
+- [x] Short practice hides unavailable Fury/power pads and preserves its chart.
+  Boundary epsilon regressions and unique replacement-note ids prevent dropped attacks.
+- [x] Six headless suites and real-window checks, including fourteen expanded
+  real-event scenarios, five new workbench pages at six size/scale settings,
+  replay targets/seeking and eighteen actual travel/ritual render cases.
+- [x] All fifteen shared-framework suites pass after the expansion.
+- [x] Refreshed expansion Windows/Web/Android exports, actual native release boot,
+  production-pack input and two browser-layout runs through the new activities,
+  Creator save/import, Daily rival and read-only replay; pack/permission audits.
+  Android's themed-icon auditor warning remains an explicit device-review gate.
+- [x] Final documentation, whitespace and source-status reconciliation.
+
+## Stretch only
+
 - [ ] Stretch: online leaderboards/sharing, simultaneous mic-versus-buttons,
   more grounds/groups, women's league, localization and steward mode.

@@ -6,6 +6,7 @@ signal stop_selected(ground: int, stop: int)
 const Options = preload("res://games/tifo_beato/tifo_beato_options.gd")
 const Career = preload("res://games/tifo_beato/career/career_state.gd")
 const Widgets = preload("res://games/tifo_beato/ui/widgets.gd")
+const Away = preload("res://games/tifo_beato/career/away_days.gd")
 var career := Career.new()
 
 func _ready() -> void:
@@ -23,4 +24,5 @@ func _ready() -> void:
 				stop + 1, career.best_stars(ground, stop)],
 				func() -> void: stop_selected.emit(ground, stop))
 			button.disabled = not career.stop_unlocked(ground, stop)
-			button.tooltip_text = "Play stop %d at %s" % [stop + 1, Options.GROUNDS[ground]["title"]]
+			button.tooltip_text = "Play stop %d at %s%s" % [stop + 1,
+				Options.GROUNDS[ground]["title"], " - away trip available" if Away.is_away(stop) else ""]

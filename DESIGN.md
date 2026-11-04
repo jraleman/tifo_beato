@@ -837,8 +837,9 @@ simultaneous mic-versus-buttons duel is in Stretch (§16).
 ### 9.4 Records
 
 Best Noise and stars per career match and per Quick-play ground and group,
-best combo, rivals beaten and the actual banners. Daily derby remains
-post-v1 (§11.4). Stored in
+best combo, rivals beaten and the actual banners, plus ritual bests, eight
+saved chants, local daily history/streaks and twelve Best Moments (§11).
+Stored in
 `user://tifo_beato.cfg`, declared in `save_files`. Writes merge into the
 file, and a record never regresses.
 
@@ -867,7 +868,7 @@ commentator is decoration.
 
 | File | Holds | Declared in `save_files`? |
 | --- | --- | --- |
-| `user://tifo_beato.cfg` | Career, identity, actual banners, records, rival and exhibit unlocks | **Yes** — "The Curva" |
+| `user://tifo_beato.cfg` | Career, identity, banners, records, unlocks, ritual bests, chants, daily history and numeric Best Moments | **Yes** — "The Curva" |
 | `user://tifo_beato_voice.cfg` | Soundcheck profiles (§4.3) | No — calibration |
 
 ### 10.2 Store — currency "Tokens"
@@ -878,7 +879,8 @@ a CPU capo, and a ceiling of 120 per match. Everything is **cosmetic only**.
 A gold megaphone doesn't widen a timing window.
 
 One completed hot-seat set pays once, after its final seat. Build/steward
-practice and incomplete rounds pay zero; duplicate settlement cannot pay again.
+practice, Away activities, rituals, Creator play and incomplete rounds pay
+zero; duplicate settlement cannot pay again. Daily uses the normal match cap.
 
 | Slot id | Wears | Kind |
 | --- | --- | --- |
@@ -922,7 +924,8 @@ There are two variants, both through the game's `share_art.tscn`:
 
 Both carry the ground and the QR code to `stats_url`. They freeze the actual
 finished banner and equipment rather than rereading the wardrobe after a round.
-Daily badges are post-v1.
+Daily cards also freeze their local date, seed, ground/group, rival/modifier,
+streak and assist flag. Mural cards use the actual ritual banner snapshot.
 
 ### 10.5 Accessibility (non-negotiable)
 
@@ -989,22 +992,27 @@ rewards loudness or session length** (§4.6).
 
 ---
 
-## 11. Later milestones (planned, after v1)
+## 11. Expanded modes (milestones 12-15)
 
-These are designed now so v1's architecture leaves room for them. They ship
-after the career spine.
+The owner approved all four post-v1 milestones, local-midnight daily resets
+and curated-only Creator lyrics. They are implemented on the same input,
+judge, save and shell contracts as the career spine.
 
 ### 11.1 Away days
 
-Travel stages between away matches:
+Optional practice stages, also offered before away career matches:
 
-- **Bus singalong**: a free-tempo singalong where the bus driver's wipers set
-  the beat and potholes are Rests.
+- **Bus singalong**: choose 60-180 BPM; the bus driver's wipers set the beat
+  and potholes are Rests.
 - **Train station chants**: the station's **echo** answers you after one beat.
   Leave it room, or your call trips over its own echo.
 - **Hostile stadiums**: you are in the away end, and the home crowd tries to
   drown you out. Disruptions double, and the bleed gate's off-grid rule still
   holds.
+
+Bus/train/skip never gates career kickoff. Travel and standalone hostile-end
+activities pay no Tokens/stars. Bus/station stages have no football, chaos,
+Fury or power-up chart rewrites.
 
 ### 11.2 Derby week
 
@@ -1012,28 +1020,52 @@ A build-up to the derby with Inter Nebula (ground 4): **painting walls** (a
 workshop variant on a mural), **rehearsal** (practice mode for the derby
 chants) and **rallying the group** (recruit fans with short chants at the pub
 quiz, the bakery and the barber). Each ritual raises the derby's starting
-crowd size and morale.
+crowd size and morale. The best quality per ritual merges monotonically;
+repetition never stacks. Full preparation is capped at +25 starting morale
+and 25% more Cathedral fans. It applies only to Cathedral stop 4, never gates
+the derby and pays no Tokens. The mural uses a cloned banner: its quality
+persists, while its artwork does not overwrite the player's match banner.
 
 ### 11.3 Chant Creator
 
 Record your own chant with the mic or keys over a chosen tempo. The creator
-quantises it to the 16th grid, lets you edit notes, write lyric slots and pick
-a response style, then saves it as a `ChantChart`. It needs no new input,
+quantises it to the 16th grid, lets you edit notes, choose curated lyric slots
+and Echo/Clapback/Harmony, then builds an ordinary `ChantChart`. It needs no new input,
 because it consumes the same `SoundEvent` stream. **Challenge a friend** offline
 through hot seat. A **chant code**, a short text string with the chart in it,
 copies to the clipboard and pastes into another copy of the game.
+
+Use 60-180 BPM, 1-8 bars and at most 64 notes. Voice durations include the
+classifier's 150 ms decision plus a 100 Hz sample, so quantization cannot
+create an unplayable short sustain. Recording returns an unsaved draft and
+reports any remaining conflict before Save. Eight explicit local slots store
+musical values, not Resources or PCM. Codes are bounded to 8,192 characters,
+canonical Base64 printable-ASCII JSON with a checked `TB1` version/checksum;
+invalid import leaves the draft unchanged. No free text, file loading or
+network service. Practice and identical-chart successive two-human challenges
+pay no Tokens/stars/achievements and disable Fury/power-ups.
 
 ### 11.4 Daily derby and Best Moments
 
 - **Daily derby**: the seed is the player's local date (`YYYYMMDD`) *(§17)*. It
   picks a ground, a rival, a group and a modifier. Everyone gets the same match
   on the same day, so share cards compare fairly. The daily derby ignores
-  unlock gates and records a daily best and a streak. Its board is local only.
-- **Best Moments**: the match model is deterministic from its seed and
-  its **judged-event log**, which is small: a few KB per match. The game keeps
+  unlock gates and records a daily best and a streak. Reset is **local
+  midnight**; the date freezes at round start, including across midnight.
+  A seeded halftime sing-off uses the selected rival, and the modifier changes
+  the actual chaos lineup. Bests merge; attempts on one date cannot stack a
+  streak. History is capped at 366 dates and the board is local only. Ordinary
+  ground/group selections and unlock gates return after leaving Daily.
+- **Best Moments**: small numeric **visual checkpoints plus judged-event logs**
+  reconstruct the actual model's visuals without saving acoustic frames. The game keeps
   the 12 best moments (the loudest Fury, the most heroic scarf tornado, the
   biggest tifo and the **worst off-key disaster**) and replays them in the
-  real 3D view from the log. Stored in the progress save.
+  real 3D view from the log. Each clip includes up to three seconds before and
+  after its event, at most 128 checkpoint/judgment rows, seed, ground/group
+  and frozen banner/outfit. Playback/seek restores those fields directly,
+  including lighting/tifo state; it does not rerun classification or scoring.
+  No new shell round, hardware input, payout or progress writes. Stored in the
+  progress save, not as audio/video recordings.
 
 ---
 
@@ -1143,16 +1175,21 @@ sound/                         # frames/events, classifier, capture, pitch, prof
                                # bleed/latency/guide and mic/key/pad/touch/CPU sources
 sound/input_stream.gd          # one timestamped stream with independent contacts
 chart/chant_chart.gd, chant_phrase.gd, chants.gd, match_chart.gd
+chart/chant_creator.gd         # quantized musical draft, validation and offline code
 chart/chants/*.tres            # 24 original chant Resources
 match/                        # judge, life, Fury, crowd, seeded football, chaos,
                                # disruptions, tifos, war, commentator and match state
 career/                       # career_state.gd, identity.gd, word_list.gd, records.gd
+                               # away_days.gd, derby_week.gd and daily_derby.gd
+match/best_moments.gd          # bounded numeric visual checkpoints, no audio
 workshop/                     # banner.gd, build_race.gd
 steward/steward_state.gd       # both gentle steward mini-games
 world/                        # procedural mesh builder, capos, rivals, props, drums,
                                # crowds/shader, scenery, pitch, tifos and curva viewport
+world/travel_scenery.gd        # original bus/station/neighbourhood/mural toys
 ui/                           # widgets.gd, lobby.gd, career_map.gd, soundcheck.gd,
                                # match_hud.gd and independent touch_controls.gd
+ui/chant_editor.gd             # scrollable workbench, explicit save/code actions
 audio/tifo_audio.gd            # original synthesis and audible playback clock
 presentation/stage.gd          # shared original-model setup/store/gallery/share stage
 character_preview.tscn, store_preview.tscn, gallery_stage.tscn, share_art.tscn
@@ -1264,18 +1301,22 @@ directory and rejects unexpected engine diagnostics even with exit code 0.
 | `model_test.gd` | All original charts, judge/assists/life/Fury, deterministic football, fixed-duration goals, persistent chaos ledgers, safe disruptions, wars/stewards, banner images, career/records and compensated handoff/output clocks |
 | `scene_test.gd` | All owned scripts compile; actual lobby/replay/handoff releases, store/fabric preferences, synthesized responses, compact inventory accessibility, late/safe rival audio, digital-silence errors and developer previews |
 | `flow_test.gd` | Complete genuine keyboard/touch input through Quick, workshop, both stewards, war, career and all three hot-seat modes; actual accuracy/stars/earnings and no non-career progression |
-| `curva_view_test.gd` *(window)* | Physical sizes/UI scales, real keyboard/touch play, complete cast/camera/effect/model/share geometry, lane/pad separation, all five story cards in 30 layout cases, and <90 visible+shadow Final draws (measured 32) |
+| `post_v1_test.gd` | Safe travel/hostile slots, bounded ritual preparation, quantized playable musical data/code validation, local-calendar streaks, read-only replay reconstruction and stale-save merges |
+| `post_v1_flow_test.gd` | Fourteen complete real-event scenarios: travel/rituals, live Creator record/save/import/practice/challenge, prepared derby, career travel and the actual daily rival; bounded payouts and byte-for-byte read-only replay |
+| `curva_view_test.gd` *(window)* | Physical sizes/UI scales, real keyboard/touch play, complete cast/camera/effect/model/share geometry, expanded workbench/replay layouts and slider targets, original travel/ritual scenery, all five story cards in 30 layout cases, and <90 visible+shadow Final draws (normal match measured 32) |
 
 `flow_fixture.gd` dispatches real events, never grades. `platform_fixture.gd`
 extends Node and is wrapped by `platform_test.tscn` only in a separate QA
-export. It verifies actual packed-engine full input, payout, capture cleanup,
-branding/exclusions and real tutorial decoding. Browser checks use a deny-only
-microphone stub and exercise the real Start/Use Buttons actions; they never
-grant hardware access. Neither fixtures nor tools ship in production packs.
+export. Native production-pack and web runs verify actual full Quick input,
+bus/station travel, recruitment, live Creator recording/save/code import/practice,
+Daily's real rival and read-only Best Moments, plus bounded payout, capture
+cleanup and real tutorial decoding. Separate production audits verify branding
+and exclusions. Browser checks use a deny-only microphone stub and exercise
+the real Start/Use Buttons actions; they never grant hardware access. Neither
+fixtures nor tools ship in production packs.
 
-The fifteen framework suites discover the manifest automatically. Fourteen
-pass; the aggregate walkthrough check currently fails because unrelated
-`puppy_kraft` declares no recording. Tifo's video decodes on native and web.
+All fifteen framework suites discover the manifest automatically and pass,
+including the collection walkthrough decoder. Tifo's video decodes on native and web.
 Hardware and owner-review gates are not replaced by these checks.
 
 ---
@@ -1312,8 +1353,12 @@ Hardware and owner-review gates are not replaced by these checks.
 11. **Polish and integration.** Accessibility sweep, mobile touch and mic
     pass, web pass, framework suites with `--game=all`, export preset and docs.
 
-**Later (planned, §11):** 12. Away days. 13. Derby week. 14. Chant Creator
-and chant codes. 15. Daily derby and Best Moments.
+12. **Away days.** Bus/station practice, optional career travel and safe hostile ends.
+13. **Derby week.** Mural, rehearsals and recruitment with bounded best-only bonuses.
+14. **Chant Creator.** Live classified notes, editor, eight slots, checked offline
+    codes and identical-chart two-human challenges.
+15. **Daily Derby and Best Moments.** Local-calendar seeded matches, bests/streaks,
+    frozen share badges and read-only 3D visual-log playback.
 
 **Stretch:** online daily leaderboards and chant sharing (needs a backend,
 privacy copy, moderation and anti-cheat by event-log verification); a
@@ -1327,20 +1372,20 @@ career; localisation (Italian, Spanish, German); a "be the steward" mode.
 
 | Topic | Owner-approved decision |
 | --- | --- |
-| Scope | Full v1, milestones 0–11; adjacent framework integration authorized |
+| Scope | Full v1 and approved expansion, milestones 0–15; adjacent framework integration authorized |
 | Title | Tifo Beato — Ninety minutes. No silence. |
 | Groups | Sections inside the player's own curva |
 | Comfort | Relative capped loudness; no extra reward above comfortable carry |
 | Audio | Original procedural chants and synthesized capo/crowd; no recording requirement |
 | Commentator | Captions only in v1 |
-| Text | Curated club/group/banner words, no free text |
+| Text | Curated club/group/banner words and Creator lyric slots, no free text |
 | Smoke | Cartoon smoke, no flares |
 | Rivals | Fictional, gentle humour; owner reviews names/copy/content before release |
 | Progression | Stars can promote even when the football team loses |
 | Melodies | Original synthesis; owner reviews originality/content before release |
 | Hot seat | Duel, Two Capos and Split the Stands |
 | Platforms | Desktop/web/mobile support; physical-device checks remain required |
-| Daily boundary | Deferred with milestone 15; no v1 daily mode |
+| Daily boundary | Local calendar midnight; freeze the chosen date for an active match |
 
 Unfinished release gates are tracked in `TODO.md`: three-tester physical
 classification/calibration, speaker bleed, real gamepad/multitouch, granted

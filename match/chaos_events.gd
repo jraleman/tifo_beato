@@ -12,6 +12,7 @@ const CAPTIONS := {
 	"kazoo": "KEVIN'S KAZOO: hold the Rests to let him finish.",
 }
 var active := ""
+var enabled := true
 var left := 0.0
 var progress := 0
 var successes: Array[String] = []
@@ -48,6 +49,11 @@ func schedule(responses: Array[float]) -> void:
 			_slots.append(responses[mini(at, responses.size() - 1)])
 	if not _slots.is_empty():
 		_next_time = _slots[0]
+
+func set_lineup(kinds: Array[String]) -> void:
+	for kind in kinds:
+		assert(kind in KINDS, "Unknown scheduled chaos.")
+	_queue.assign(kinds)
 
 func retime(after: float, shift: float) -> void:
 	for index in _slots.size():
@@ -90,6 +96,8 @@ func judge(result: Dictionary) -> bool:
 	return false
 
 func advance(time: float, dt: float, beat: float, allow_start: bool) -> String:
+	if not enabled:
+		return ""
 	if not active.is_empty():
 		left -= dt
 		if left <= 0.0:

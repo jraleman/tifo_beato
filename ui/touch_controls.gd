@@ -18,6 +18,7 @@ var key_labels: Array[String] = ["F", "J", "Space", "A", "S", "D", "Q", "E"]
 var layout := 0
 var factor := 1.0
 var enabled := true
+var powers_enabled := true
 var _power := ""
 var _order: Array[int] = []
 var _pad_height := 72.0
@@ -46,11 +47,26 @@ func set_power(value: String) -> void:
 	if value == _power:
 		return
 	_power = value
-	accessibility_description = "Beat left and right, Shout, Sing LOW, MID and HIGH, Fury and power. " \
-		+ "Hold for sustain; release every pad for Rest. Inventory: " + (
+	_describe()
+	queue_redraw()
+
+func set_powers_enabled(value: bool) -> void:
+	if value == powers_enabled:
+		return
+	touch.clear()
+	powers_enabled = value
+	_describe()
+	_layout()
+
+func _describe() -> void:
+	accessibility_description = "Beat left and right, Shout, Sing LOW, MID and HIGH. " \
+		+ "Hold for sustain; release every pad for Rest."
+	if not powers_enabled:
+		accessibility_description += " Practice has no Fury or power-ups."
+	else:
+		accessibility_description += " Fury and power pads are available. Inventory: " + (
 			"empty" if _power.is_empty() else str(Hud.POWER_NAMES.get(_power, _power))
 				+ "; use the labelled power pad.")
-	queue_redraw()
 
 func _layout() -> void:
 	pads.clear()
@@ -59,10 +75,12 @@ func _layout() -> void:
 		_order = [3, 4, 5, 2, 0, 1, 7, 6]
 	elif layout == 2:
 		_order = [0, 1, 2, 6, 3, 4, 5, 7]
-	var columns := 4 if size.y > 100 * factor else 8
+	if not powers_enabled:
+		_order = _order.filter(func(index: int) -> bool: return index < 6)
+	var columns := (4 if powers_enabled else 3) if size.y > 100 * factor else _order.size()
 	var gap := 8.0 * factor
 	var width := maxf(1.0, (size.x - gap * (columns - 1)) / columns)
-	for index in 8:
+	for index in _order.size():
 		pads.append(Rect2(Vector2((index % columns) * (width + gap),
 			(index / columns) * 80 * factor), Vector2(width, _pad_height * factor)))
 	queue_redraw()

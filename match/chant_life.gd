@@ -6,6 +6,7 @@ const GRACE_SECONDS := 1.5
 const DRAIN_PER_SECOND := 20.0
 var life := 70.0
 var morale := 100.0
+var morale_max := 100.0
 var deaths := 0
 var dead := false
 var walkout := false

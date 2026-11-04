@@ -37,13 +37,13 @@ static func manifest() -> GameManifest:
 	game.tutorial_poster_path = "res://games/tifo_beato/assets/video/tutorial_poster.webp"
 	game.stats_url = "https://deskcansaw.com"
 	game.save_files = [{"path": Records.SAVE_PATH, "title": "The Curva",
-		"description": "Career stars, best Noise, rival wins, identity and the actual banner."}]
+		"description": "Career, identity, banners, derby preparation, saved chants, daily bests and read-only Best Moments."}]
 	game.achievements = Options.ACHIEVEMENTS
 	game.copy = {
 		"level_label": "Ground", "character_label": "Curva section",
 		"mode_select_intro": "Choose your ground and a section inside your own curva.",
-		"single_player_description": "Lead original chants with a microphone or Buttons. Career, Quick play, Chant wars and Workshop live on your railway screen.",
-		"multiplayer_description": "One instrument, passed between two humans: Duel, Two Capos or Split the Stands.",
+		"single_player_description": "Lead original chants with a microphone or Buttons. Your railway also has Away days, Derby week, Chant Creator, Daily Derby and Best Moments.",
+		"multiplayer_description": "Pass one instrument for Duel, Two Capos, Split the Stands or an unranked Creator challenge.",
 		"solo_confirm_title": "Your ground, your curva",
 		"solo_confirm_description": "Choose %s. Buttons are the privacy-first default. The microphone opens only after an explicit soundcheck.",
 		"versus_confirm_title": "Two capos. One instrument.",
@@ -60,6 +60,10 @@ static func manifest() -> GameManifest:
 			+ "Combos grow at 8, 16, 32 and 64. Perfects fill Fury, once per half for eight seconds. Every bonus can be earned with Buttons. Q unleashes Fury; E uses your one-slot power-up. Volume is capped at comfortable carry level.\n"
 			+ "Perfect streaks reveal scarf walls, your real banner mosaic, the giant banner, cartoon smoke and the Unholy Choreo. Crowd energy biases the seeded toy football match, but even perfect support cannot guarantee a win.\n"
 			+ "Career promotion needs nine best stars, not football wins. Last stops have gentle steward checks and five-exchange halftime sing-offs. Quick and hot-seat modes never change career stars. Workshop quality and mishaps are saved into the real banner image.\n"
+			+ "Away days offer a chosen-tempo wiper bus, station echoes with scored silence, and hostile ends with twice the safe disruptions. Away career stops offer optional bus/train travel. Short practice keeps its authored chart: no Fury or power-ups.\n"
+			+ "Derby week prepares Cathedral stop 4 against Inter Nebula: paint a mural, rehearse, or rally the pub, bakery and barber. Only each ritual's best counts, up to +25 starting morale and +25% crowd. These activities never gate the derby or pay Tokens.\n"
+			+ "Chant Creator records classified notes, never audio. Choose 60-180 BPM, 1-8 bars, curated lyrics and Echo/Clapback/Harmony; edit the sixteenth grid, then explicitly save one of eight local slots. Voice notes must last at least 160 ms. Checked TB1 codes share musical data offline. Practice and successive two-human challenges are unranked.\n"
+			+ "Daily Derby changes at local midnight. Its frozen date seeds the ground, section, modifier and real halftime rival, ignoring unlocks. Best Noise and streaks stay local; shares include the date and assist badge. Best Moments keeps twelve bounded numeric 3D clips. Seeking never records, scores, pays or changes progress.\n"
 			+ "Microphone consent is explicit. No monitoring, saved audio or required headset. Calibrate room, claps, comfortable speaking/carrying, relative pitch and speaker bleed. Capture stops on pause, rival turns, handoffs, results and exit. Denied or dead input always leaves Buttons available.\n"
 			+ "Use a comfortable voice; stop if it strains. After about fifteen minutes, take water, a rest, or a few rounds on Buttons. Any sound, wider windows, slower tempo, Quiet Mode, Static lane and gentle/off rivals are available in Settings.",
 		"instructions_player_one_controls": "F/J Beat, Space Shout, A/S/D LOW/MID/HIGH, Q Fury, E power. Rebind in Controls. Touch supports independent fingers. Gamepad A/X or bumpers Beat, RT Shout, LT + vertical stick Sing, Y Fury, B power. Escape / Start / Pause opens the shared menu.",

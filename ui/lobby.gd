@@ -8,6 +8,8 @@ signal instrument_selected(seat: int, instrument: int)
 signal identity_changed
 signal fabric_selected(index: int)
 signal exit_requested
+signal chant_saved(slot: int, data: Dictionary)
+signal replay_requested(index: int)
 const Options = preload("res://games/tifo_beato/tifo_beato_options.gd")
 const Words = preload("res://games/tifo_beato/career/word_list.gd")
 const Identity = preload("res://games/tifo_beato/career/identity.gd")
@@ -17,6 +19,12 @@ const Records = preload("res://games/tifo_beato/career/records.gd")
 const War = preload("res://games/tifo_beato/match/chant_war.gd")
 const Map = preload("res://games/tifo_beato/ui/career_map.gd")
 const Widgets = preload("res://games/tifo_beato/ui/widgets.gd")
+const Away = preload("res://games/tifo_beato/career/away_days.gd")
+const Derby = preload("res://games/tifo_beato/career/derby_week.gd")
+const Daily = preload("res://games/tifo_beato/career/daily_derby.gd")
+const Moments = preload("res://games/tifo_beato/match/best_moments.gd")
+const Creator = preload("res://games/tifo_beato/chart/chant_creator.gd")
+const Editor = preload("res://games/tifo_beato/ui/chant_editor.gd")
 var identity := Identity.new()
 var banner := Banner.new()
 var career := Career.new()
@@ -29,6 +37,9 @@ var hot_seat_mode := 0
 var group_names := PackedStringArray(["The Bucket Brigade"])
 var fabric_owned: Array[bool] = [true, false, false, false]
 var status := ""
+var creator := Creator.new()
+var travel_tempo := 100
+var editor: Editor
 var _panel: PanelContainer
 var _layout: VBoxContainer
 var _scroll: ScrollContainer
@@ -50,12 +61,14 @@ func _ready() -> void:
 	_layout = VBoxContainer.new()
 	_layout.add_theme_constant_override("separation", 10)
 	_panel.add_child(_layout)
+	_layout.minimum_size_changed.connect(_fit_panel)
 	_title = Widgets.label(_layout, "TIFO BEATO", true)
 	_subtitle = Widgets.label(_layout, "Ninety minutes. No silence. | " + identity.club_name())
 	_tabs = OptionButton.new()
 	_tabs.fit_to_longest_item = false
 	_tabs.accessibility_name = "Next screen"
-	for title in ["Career railway", "Quick play", "Tifo workshop", "My club"]:
+	for title in ["Career railway", "Quick play", "Tifo workshop", "My club",
+		"Away days", "Derby week", "Chant Creator", "Daily Derby", "Best Moments"]:
 		_tabs.add_item(title)
 	_tabs.select(tab)
 	_tabs.item_selected.connect(_select_tab)
@@ -88,6 +101,7 @@ func _rebuild() -> void:
 	_banner_preview = null
 	_budget_label = null
 	_contrast = null
+	editor = null
 	if not status.is_empty():
 		Widgets.label(_content, status)
 	Widgets.label(_content, "Comfortable voice only. Buttons earn every bonus. Pause whenever you need.")
@@ -109,8 +123,26 @@ func _rebuild() -> void:
 		_quick_play()
 	elif tab == 2:
 		_workshop()
-	else:
+	elif tab == 3:
 		_identity_editor()
+	elif tab in [4, 5, 7] and player_count != 1:
+		Widgets.label(_content, "Away days, Derby week and Daily Derby are solo activities.")
+	elif tab == 4:
+		_away_days()
+	elif tab == 5:
+		_derby_week()
+	elif tab == 6:
+		editor = Editor.new()
+		editor.creator = creator
+		editor.saved = records.data["chants"]
+		editor.player_count = player_count
+		editor.play_requested.connect(play_requested.emit)
+		editor.save_requested.connect(chant_saved.emit)
+		_content.add_child(editor)
+	elif tab == 7:
+		_daily_derby()
+	else:
+		_best_moments()
 	if is_node_ready():
 		refresh_layout()
 
@@ -118,15 +150,7 @@ func _career_stop(ground_index: int, stop: int) -> void:
 	play_requested.emit({"mode": "career", "ground": ground_index, "stop": stop})
 
 func _quick_play() -> void:
-	var titles: Array[String] = []
-	var unlocked: Array[int] = []
-	for index in 5:
-		if career.ground_unlocked(index):
-			titles.append(str(Options.GROUNDS[index]["title"]))
-			unlocked.append(index)
-	var selected := maxi(0, unlocked.find(ground))
-	Widgets.choice(_content, "Unlocked ground", titles, selected,
-		func(index: int) -> void: ground = unlocked[index])
+	_ground_picker()
 	if player_count > 1:
 		Widgets.label(_content, "Pass one instrument. Each seat keeps its own timing profile.")
 		Widgets.label(_content, "Two Capos and Split use P1's chant pool and identical rules.")
@@ -152,6 +176,83 @@ func _quick_play() -> void:
 			func() -> void: play_requested.emit({"mode": "flag", "ground": ground}))
 		Widgets.button(_content, "Practise Drum in the Coat",
 			func() -> void: play_requested.emit({"mode": "coat", "ground": ground}))
+
+func _ground_picker() -> void:
+	var titles: Array[String] = []
+	var unlocked: Array[int] = []
+	for index in 5:
+		if career.ground_unlocked(index):
+			titles.append(str(Options.GROUNDS[index]["title"]))
+			unlocked.append(index)
+	var selected := maxi(0, unlocked.find(ground))
+	ground = unlocked[selected]
+	Widgets.choice(_content, "Unlocked ground", titles, selected,
+		func(index: int) -> void: ground = unlocked[index])
+
+func _away_days() -> void:
+	Widgets.label(_content, "THE SCARVES ARE GOING SOMEWHERE", true)
+	Widgets.label(_content, "Optional travel practice pays no Tokens or career stars. "
+		+ "Away career stops offer the same journey before kickoff.")
+	_ground_picker()
+	Widgets.number(_content, "Bus wiper tempo (BPM)", 60, 180, 1, travel_tempo,
+		func(value: float) -> void: travel_tempo = roundi(value))
+	for route in ["bus", "station", "hostile"]:
+		Widgets.button(_content, str(Away.TITLES[route]), func() -> void:
+			play_requested.emit({"mode": "away_" + route, "ground": ground,
+				"tempo": travel_tempo if route == "bus" else 100}))
+	Widgets.label(_content, "Bus: potholes are Rests. Station: leave the one-beat echo room. "
+		+ "Hostile end: twice the safe disruptions; Gentle/Off still apply.")
+
+func _derby_week() -> void:
+	var bonuses := Derby.bonuses(records.data["derby"])
+	Widgets.label(_content, "DERBY WEEK - INTER NEBULA", true)
+	Widgets.label(_content, "+%d starting morale, +%d fans, +%d%% crowd for Cathedral stop 4.\n"
+		% [bonuses["morale"], bonuses["fans"], roundi((float(bonuses["crowd_scale"]) - 1.0) * 100)]
+		+ "Only each ritual's best counts. Optional rituals pay no Tokens and never gate the derby.")
+	for index in Derby.RITUALS.size():
+		var ritual: String = Derby.RITUALS[index]
+		Widgets.button(_content, "%s - best %.0f%%" % [
+			Derby.TITLES[index], float(records.data["derby"].get(ritual, 0.0))],
+			func() -> void: play_requested.emit({"mode": "derby_ritual", "ritual": ritual,
+				"ground": 3}))
+
+func _daily_derby() -> void:
+	var date := Daily.today()
+	Widgets.label(_content, "DAILY DERBY - " + date, true)
+	if not Daily.valid_date(date):
+		Widgets.label(_content, "The system calendar date is invalid. Correct it before playing a daily.")
+		return
+	var challenge := Daily.challenge(date)
+	Widgets.label(_content, "%s | %s\n%s | rival %s\nLocal midnight reset. Unlocks do not apply."
+		% [challenge["title"], Options.GROUNDS[int(challenge["ground"])]["title"],
+			Options.GROUPS[int(challenge["pool"])]["title"], War.RIVALS[int(challenge["rival"])]["title"]])
+	Widgets.label(_content, "Streak: %d completed local dates. Assists stay available and appear on shares."
+		% Daily.streak(records.data["daily"], date))
+	Widgets.button(_content, "Play this Daily Derby", func() -> void: play_requested.emit(challenge))
+	Widgets.label(_content, "LOCAL DAILY BOARD", true)
+	var dates: Array = records.data["daily"].keys()
+	dates.sort()
+	dates.reverse()
+	if dates.is_empty():
+		Widgets.label(_content, "No completed daily yet.")
+	for day: String in dates.slice(0, 14):
+		var best: Dictionary = records.data["daily"][day]
+		Widgets.label(_content, "%s | %d Noise | %d stars | combo %d | streak %d" % [
+			day, best["noise"], best["stars"], best["combo"], best["streak"]])
+
+func _best_moments() -> void:
+	Widgets.label(_content, "TWELVE BEST MOMENTS", true)
+	Widgets.label(_content, "Read-only 3D replays from numeric model checkpoints and judged events. "
+		+ "No microphone recording. Replay never pays, scores or advances progress.")
+	var clips: Array = records.data["moments"]
+	if clips.is_empty():
+		Widgets.label(_content, "Unleash Fury, reveal a tifo, use Scarf Tornado or sing a wonderfully sour line.")
+	for index in clips.size():
+		var clip: Dictionary = clips[index]
+		Widgets.button(_content, "%s | %s" % [
+			Moments.TITLES[Moments.KINDS.find(str(clip["kind"]))],
+			Options.GROUNDS[int(clip["ground"])]["title"]],
+			func() -> void: replay_requested.emit(index))
 
 func _workshop() -> void:
 	Widgets.label(_content, "A garage. A bedsheet. A wildly optimistic budget.", true)
@@ -245,10 +346,6 @@ func _on_layout_changed(dimensions: Vector2) -> void:
 	if _panel == null:
 		return
 	var factor := Widgets.factor(self)
-	var inset := 18.0 * factor
-	var width := minf(dimensions.x - inset * 2, 1060 * factor)
-	_panel.position = Vector2((dimensions.x - width) * 0.5, inset)
-	_panel.size = Vector2(width, maxf(1, dimensions.y - inset * 2))
 	Widgets.scale_tree(_layout, factor)
 	var compact := dimensions.y < 650 * factor
 	_subtitle.visible = not compact
@@ -259,3 +356,14 @@ func _on_layout_changed(dimensions: Vector2) -> void:
 			button.add_theme_font_size_override("font_size", roundi(18 * factor))
 	if _banner_preview != null:
 		_banner_preview.custom_minimum_size.y = (120 if compact else 180) * factor
+	_fit_panel()
+
+func _fit_panel() -> void:
+	if _panel == null:
+		return
+	var dimensions := get_viewport_rect().size
+	var factor := Widgets.factor(self)
+	var inset := 18.0 * factor
+	var width := minf(dimensions.x - inset * 2, 1060 * factor)
+	_panel.position = Vector2((dimensions.x - width) * 0.5, inset)
+	_panel.size = Vector2(width, maxf(1, dimensions.y - inset * 2))

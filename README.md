@@ -7,7 +7,7 @@ Lead the Bucket Brigade from an eleven-person recreation ground to the
 Continental Final. Hit calls, hear the crowd answer your actual performance,
 make ridiculous banners and support a seeded toy football match.
 
-V1 gameplay is implemented; **physical-device and owner release review are
+Milestones 0-15 are implemented; **physical-device and owner release review are
 still required**. All clubs, characters, artwork and synthesized chants are
 fictional and game-owned. There are no recorded crowds or commentator voices.
 
@@ -25,7 +25,8 @@ godot --path ..\.. -- --game=tifo_beato
 
 The shared setup selects a ground and curva section. First entry opens the
 game's railway/lobby, not an already-running match. Choose Career, Quick,
-Chant war, Workshop or a hot-seat mode there. **Buttons are the default**;
+Chant war, Workshop, Away, Derby, Creator, Daily or Best Moments there.
+Hot-seat setup also enables Creator challenges. **Buttons are the default**;
 opening a menu never requests microphone access.
 
 ## Play
@@ -70,6 +71,25 @@ Quick and hot-seat play do not advance career stars. Only completed
 performances pay Tokens, once per match/set, capped at 120; workshop and
 steward practice pay none. Cosmetics never change the judge.
 
+## Expanded modes
+
+The railway's five additional pages are playable, not roadmap placeholders.
+
+| Page | Rules |
+| --- | --- |
+| Away days | Choose 60-180 BPM for the wiper bus; potholes are Rests. Station calls leave scored silence for the echo. Hostile ends double only already-safe disruptions, respecting Gentle/Off. Away career stops offer optional bus/train/skip before kickoff. |
+| Derby week | Paint a mural, rehearse, or recruit at the pub, bakery and barber. Only each ritual's best counts: up to +25 starting morale and +25% crowd at Cathedral stop 4 against Inter Nebula. Rituals never gate kickoff or overwrite the match banner. |
+| Chant Creator | Record classified events at 60-180 BPM over 1-8 bars; edit up to 64 sixteenth-grid notes with curated lyrics and Echo/Clapback/Harmony. Voice notes need at least 160 ms. Explicitly save one of eight local slots. Checked `TB1` codes, at most 8,192 characters, share musical data offline; invalid imports preserve the draft. |
+| Daily Derby | Local midnight changes the date seed, ground, section, modifier and real halftime rival. Unlock gates do not apply. The date freezes at kickoff; bests and consecutive completed-date streaks stay local. Replays refresh today's date; repeated attempts cannot inflate a streak. Frozen shares include the date, seed and assist badge. |
+| Best Moments | Keep twelve short Fury, tornado, tifo and off-key clips. Real 3D playback/seek reconstructs bounded numeric checkpoints and judged events with frozen banner/outfit, not microphone audio or a newly scored performance. |
+
+Away activities, rituals and Creator practice/challenges pay no Tokens or
+career stars and cannot unlock match achievements. Short practice keeps its
+authored chart without Fury/power-ups. Choose two humans in shared setup for
+the Creator's identical-chart successive challenge; mobile remains solo.
+Daily is a complete match with the ordinary bounded one-time payout.
+Best Moments opens no input, pays nothing and never changes progress.
+
 ## Microphone, comfort and accessibility
 
 Microphone play is optional. Soundcheck starts only after an explicit Start:
@@ -104,7 +124,7 @@ directory, so use the isolated runner for tests.
 
 | File | Purpose |
 | --- | --- |
-| `user://tifo_beato.cfg` | Merged career, identity, banners, records and rival/exhibit unlocks |
+| `user://tifo_beato.cfg` | Merged career, identity, banners, records, ritual bests, eight chant slots, daily history and twelve numeric Best Moments |
 | `user://tifo_beato_voice.cfg` | Numeric calibration only; not included in progress backups |
 | `user://settings.cfg` | Framework-managed options and bindings |
 | `user://achievements.cfg`, `user://store.cfg` | Framework-managed achievements, wallet and cosmetics |
@@ -119,23 +139,28 @@ From this folder:
 
 ```powershell
 .\tools\validate.ps1 -Godot 'C:\path\to\godot.exe' `
-  -Suites @('sound','model','scene','flow') -Window -Framework `
+  -Suites @('sound','model','scene','flow','post_v1','post_v1_flow') -Window -Framework `
   -TimeoutSeconds 300
 ```
 
 The runner imports an isolated junction project/user directory, saves logs and
 checks engine diagnostics as well as exit codes. `sound_test.gd`,
-`model_test.gd`, `scene_test.gd` and `flow_test.gd` run headless;
+`model_test.gd`, `scene_test.gd`, `flow_test.gd`, `post_v1_test.gd` and
+`post_v1_flow_test.gd` run headless;
 `curva_view_test.gd` requires an actual graphics window. Flow tests route real
 keyboard/touch events through complete matches and every mode, not direct
 score assignments. The platform fixture is a Node for a separate QA export
 or an external native-pack driver, not another headless SceneTree suite.
 
-The game suites and GPU input/layout checks pass. Exported web checks cover
-portrait touch/+400 ms and desktop keyboard/-100 ms complete matches, actual
-tutorial decoding, deny-only microphone recovery and capture cleanup.
-The collection's aggregate tutorial test is currently blocked by
-`puppy_kraft` having no walkthrough; Tifo's own video decodes successfully.
+The game suites and GPU input/layout checks pass. Native production-pack and
+exported web checks cover complete Quick matches, bus/station travel, pub
+recruitment, live Creator recording/save/code import/practice, Daily's actual
+rival and read-only Best Moments. Web runs cover portrait touch/+400 ms and
+desktop keyboard/-100 ms, actual tutorial decoding, deny-only microphone
+recovery and capture cleanup.
+All fifteen shared-framework suites pass, including the collection tutorial
+decoder. Window checks cover the expanded workbench/replay pages at normal
+and enlarged UI scales, real travel/ritual scenery and frozen daily shares.
 
 From `godot-base`, regenerate original stills or the silent tutorial:
 
@@ -157,6 +182,10 @@ SDK paths and private signing settings; the non-Gradle template supplies its
 SDK defaults. The tested ARM64 debug APK has min SDK 24, target SDK 36 and only
 the microphone permission, not NFC.
 
+The SDK auditor reports a missing template `themed_icon.xml`; the declared
+adaptive launcher icon is present and parses. Themed-launcher behavior still
+needs Android device validation.
+
 Windows release and web exports have boot/runtime checks; Android packaging
 is verified but no device is connected. iOS still needs an Apple team,
 provisioning and the Apple toolchain. Do not treat package export, browser
@@ -166,5 +195,5 @@ Release still requires owner review of melodies/rival copy/content,
 three-tester microphone/latency and speaker-bleed checks, real gamepad and
 multitouch use, granted recording on desktop/web/mobile, and mobile GPU,
 permission and signing verification. See [TODO.md](TODO.md) for the gates and
-[DESIGN.md](DESIGN.md) for rules. Away days, Derby week, Chant Creator and
-Daily derby/Best Moments are post-v1.
+[DESIGN.md](DESIGN.md) for rules. Online boards/sharing, simultaneous microphone
+versus Buttons and the other stretch modes remain outside this implementation.

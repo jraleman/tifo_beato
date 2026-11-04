@@ -3,9 +3,14 @@ extends RefCounted
 ## Merge-on-write protects progress from stale views and smaller standalone registries.
 
 const SAVE_PATH := "user://tifo_beato.cfg"
+const Derby = preload("res://games/tifo_beato/career/derby_week.gd")
+const Creator = preload("res://games/tifo_beato/chart/chant_creator.gd")
+const Daily = preload("res://games/tifo_beato/career/daily_derby.gd")
+const Moments = preload("res://games/tifo_beato/match/best_moments.gd")
 var data: Dictionary = {"stars": {}, "records": {}, "rivals": [], "exhibits": [],
-	"identity": {}, "banner": {}}
+	"identity": {}, "banner": {}, "derby": {}, "chants": {}, "daily": {}, "moments": []}
 var readable := true
+var _chant_edits: Dictionary = {}
 
 func load_file(path := SAVE_PATH) -> Error:
 	var config := ConfigFile.new()
@@ -32,6 +37,14 @@ func record(key: String, noise: int, stars: int, combo: int) -> void:
 		"stars": maxi(stars, int(previous.get("stars", 0))),
 		"combo": maxi(combo, int(previous.get("combo", 0)))}
 
+func save_chant(slot: int, chant: Dictionary) -> Error:
+	if slot < 0 or slot >= Creator.SLOTS or not Creator.validate(chant).is_empty():
+		push_error("Tifo Beato: invalid custom chant; save refused.")
+		return ERR_INVALID_DATA
+	data["chants"][str(slot)] = chant.duplicate(true)
+	_chant_edits[str(slot)] = true
+	return OK
+
 func save_file(path := SAVE_PATH) -> Error:
 	if not readable:
 		push_error("Tifo Beato: progress is unreadable; save blocked.")
@@ -50,9 +63,21 @@ func save_file(path := SAVE_PATH) -> Error:
 	error = config.save(path)
 	if error != OK:
 		push_error("Tifo Beato: progress save failed (%s)." % error_string(error))
+	else:
+		_chant_edits.clear()
 	return error
 
 func _valid(stored: Dictionary) -> bool:
+	if not Derby.valid(stored.get("derby", {})) or not Daily.valid(stored.get("daily", {})) \
+		or not Moments.valid(stored.get("moments", [])):
+		return false
+	var chants: Variant = stored.get("chants", {})
+	if not chants is Dictionary or chants.size() > Creator.SLOTS:
+		return false
+	for slot: Variant in chants:
+		if not slot is String or slot not in ["0", "1", "2", "3", "4", "5", "6", "7"] \
+			or not Creator.validate(chants[slot]).is_empty():
+			return false
 	for key in ["stars", "records", "identity", "banner"]:
 		if stored.has(key) and not stored[key] is Dictionary:
 			return false
@@ -117,6 +142,13 @@ func _merge(stored: Dictionary, keep_edits: bool) -> void:
 	for key in ["identity", "banner"]:
 		if not keep_edits or (data[key] as Dictionary).is_empty():
 			data[key] = (stored.get(key, {}) as Dictionary).duplicate(true)
+	for ritual: String in stored.get("derby", {}):
+		Derby.record(data["derby"], ritual, float(stored["derby"][ritual]))
+	for slot: String in stored.get("chants", {}):
+		if not keep_edits or not _chant_edits.has(slot):
+			data["chants"][slot] = stored["chants"][slot].duplicate(true)
+	Daily.merge(data["daily"], stored.get("daily", {}))
+	data["moments"] = Moments.merge(data["moments"], stored.get("moments", []))
 	for key: String in stored:
 		if not data.has(key):
 			data[key] = stored[key]

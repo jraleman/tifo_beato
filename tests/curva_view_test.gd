@@ -7,6 +7,7 @@ const War = preload("res://games/tifo_beato/match/chant_war.gd")
 const Build = preload("res://games/tifo_beato/workshop/build_race.gd")
 const Steward = preload("res://games/tifo_beato/steward/steward_state.gd")
 const Banner = preload("res://games/tifo_beato/workshop/banner.gd")
+const Daily = preload("res://games/tifo_beato/career/daily_derby.gd")
 var _failures := PackedStringArray()
 var _folder := ""
 
@@ -91,10 +92,17 @@ func _run() -> void:
 	tifo.call("present", 5, 8.0, 1.6, true, false)
 	_expect(is_equal_approx(float(tifo.get("_opacity")), 1.0), "The cross-fade must finish.")
 	await _test_real_input(game, settings)
+	state = game.get("_state")
+	var clips: Array = state.get("moments").call("finish", {"run": "render_checks",
+		"seed": game.get("_seed"), "ground": game.get("_ground"), "pool": game.get("_pool"),
+		"banner": game.get("_state").get("banner").call("to_data"),
+		"outfit": view.get("outfit")})
+	_expect(not clips.is_empty(), "Real rendered inputs must produce a replayable Best Moment.")
 	await _test_cast_and_cameras(game, settings)
 	get_root().remove_child(game)
 	game.free()
 	await process_frame
+	await _test_expanded_workbench(settings, clips)
 	await _test_advertised_models()
 	await _test_intro(settings)
 	print("Render artifacts: " + _folder)
@@ -145,6 +153,168 @@ func _test_intro(settings: Node) -> void:
 			get_root().remove_child(intro)
 			intro.free()
 			await process_frame
+
+func _test_expanded_workbench(settings: Node, clips: Array) -> void:
+	var game := (load("res://games/tifo_beato/gameplay.tscn") as PackedScene).instantiate()
+	get_root().add_child(game)
+	await process_frame
+	game.set_process(false)
+	game.get("_creator").call("put_note", [0, 0, 0, 0, 0])
+	game.get("_records").get("data")["moments"] = clips.duplicate(true)
+	game.get("_records").get("data")["daily"] = {
+		"2026-01-19": {"noise": 1234567, "stars": 3, "combo": 456, "streak": 19}}
+	for dimensions in [Vector2i(360, 640), Vector2i(640, 360), Vector2i(1280, 720)]:
+		for scale_value in [1.0, 1.5]:
+			get_root().size = dimensions
+			settings.call("set_value", "ui/scale", scale_value)
+			await process_frame
+			await process_frame
+			for tab in range(4, 9):
+				game.call("_show_lobby", tab)
+				await process_frame
+				await process_frame
+				var lobby := game.get("_lobby") as Control
+				var scroll := lobby.get("_scroll") as ScrollContainer
+				var content := lobby.get("_content") as Control
+				var suffix := "%dx%d_scale_%s_tab_%d" % [dimensions.x, dimensions.y,
+					str(scale_value).replace(".", "_"), tab]
+				_expect(lobby.get_viewport_rect().grow(0.5).encloses(
+					(lobby.get("_panel") as Control).get_global_rect()),
+					"The complete expanded workbench panel must fit: " + suffix)
+				_expect(content.size.x <= scroll.size.x + 0.5,
+					"Expanded workbench content must wrap without horizontal clipping: " + suffix)
+				for button: BaseButton in content.find_children("*", "BaseButton", true, false):
+					if not button.is_visible_in_tree():
+						continue
+					_expect(button.size.y * button.get_screen_transform().y.length() >= 43.9,
+						"Expanded workbench actions need physical touch targets: " + suffix)
+				await RenderingServer.frame_post_draw
+				_expect(get_root().get_texture().get_image().save_png(_folder.path_join(
+					"workbench_" + suffix + ".png")) == OK, "Capture every actual expanded page.")
+				if tab == 6:
+					lobby.set("player_count", 2)
+					lobby.call("_select_tab", 6)
+					await process_frame
+					var editor := lobby.get("editor") as Control
+					(editor.get("_code") as TextEdit).text = "TB1.invalid.00000000"
+					editor.call("_import")
+					var buttons := editor.find_children("*", "Button", true, false)
+					var import_button := buttons[-1] as Button
+					import_button.grab_focus()
+					await process_frame
+					await process_frame
+					var visible_part := import_button.get_global_rect().intersection(
+						scroll.get_global_rect())
+					_expect(visible_part.size.y * import_button.get_screen_transform().y.length() >= 43.9,
+						"The code import action must remain reachable by focus: " + suffix)
+					await RenderingServer.frame_post_draw
+					_expect(get_root().get_texture().get_image().save_png(_folder.path_join(
+						"creator_import_" + suffix + ".png")) == OK,
+						"Capture the real code box and validation status.")
+			if not clips.is_empty():
+				var background: RefCounted = game.get("_view").get("state")
+				game.call("_show_replay", 0)
+				await process_frame
+				await process_frame
+				game.call("_resize_layout")
+				var seek := game.get("_replay_seek") as HSlider
+				seek.value = seek.max_value
+				seek.value = seek.min_value
+				game.call("_update_replay", 0.0)
+				_expect(seek.size.y * seek.get_screen_transform().y.length() >= 43.9,
+					"The actual seek slider needs a physical touch target at every UI scale.")
+				var replay_view := game.get("_view") as Control
+				var replay_state: RefCounted = game.get("_state")
+				replay_state.get("chaos").set("active", "power_cut")
+				replay_view.call("present")
+				_expect((replay_view.get("_floodlight") as DirectionalLight3D).light_energy < 0.5,
+					"Seeking must immediately reconstruct recorded power-cut lighting.")
+				replay_state.get("chaos").set("active", "")
+				replay_state.get("tifo").set("tier", 3)
+				replay_state.get("tifo").set("reveal_left", 5.0)
+				replay_view.call("present")
+				_expect(is_equal_approx(
+					(replay_view.get("_floodlight") as DirectionalLight3D).light_energy, 1.4)
+					and is_equal_approx(float(replay_view.get("tifo").get("_opacity")), 1.0),
+					"Backward seeking cannot inherit earlier lighting or tifo fades.")
+				game.call("_update_replay", 0.0)
+				var toolbar := game.get("_replay_toolbar") as Control
+				var panel := game.get("_replay_panel") as Control
+				_expect(panel.get_viewport_rect().grow(0.5).encloses(panel.get_global_rect())
+					and toolbar.size.x <= panel.size.x + 0.5,
+					"The seek and replay toolbar must wrap inside the viewport.")
+				_expect(game.get("_source").get("capture") == null,
+					"Actual rendered replay must never open microphone capture.")
+				await RenderingServer.frame_post_draw
+				_expect(get_root().get_texture().get_image().save_png(_folder.path_join(
+					"moment_%dx%d_scale_%s.png" % [dimensions.x, dimensions.y,
+						str(scale_value).replace(".", "_")])) == OK,
+					"Capture the actual seekable 3D replay, not a static placeholder.")
+				game.call("_show_lobby", 8)
+				await process_frame
+				_expect(game.get("_state") == background
+					and game.get("_view").get("state") == background,
+					"Closing replay restores the original lobby's background model.")
+	await _test_expanded_scenery(game, settings)
+	get_root().remove_child(game)
+	game.free()
+	await process_frame
+
+func _test_expanded_scenery(game: Node, settings: Node) -> void:
+	var activities: Array[Dictionary] = [
+		{"mode": "away_bus", "ground": 0, "tempo": 180},
+		{"mode": "away_station", "ground": 0},
+		{"mode": "derby_ritual", "ground": 3, "ritual": "mural"},
+		{"mode": "derby_ritual", "ground": 3, "ritual": "pub"},
+		{"mode": "derby_ritual", "ground": 3, "ritual": "bakery"},
+		{"mode": "derby_ritual", "ground": 3, "ritual": "barber"},
+	]
+	for dimensions in [Vector2i(360, 640), Vector2i(640, 360), Vector2i(1280, 720)]:
+		get_root().size = dimensions
+		settings.call("set_value", "ui/scale", 1.5 if dimensions.x < 1000 else 1.0)
+		await process_frame
+		await process_frame
+		for request in activities:
+			game.get("_audio").set("manual_time", 0.0)
+			game.set("_request", request)
+			game.call("_start_round")
+			game.set_process(false)
+			await process_frame
+			var driver := Driver.new(game, dimensions.x < 1000)
+			for tick in 600:
+				driver.tick(4)
+				if tick % 100 == 0:
+					await process_frame
+			driver.release_all()
+			await process_frame
+			await RenderingServer.frame_post_draw
+			var view := game.get("_view") as Control
+			var viewport := view.get("world_viewport") as SubViewport
+			var camera := view.get("camera") as Camera3D
+			var travel := view.get("_travel") as Node3D
+			var name := "%s_%s_%dx%d" % [request["mode"], request.get("ritual", ""),
+				dimensions.x, dimensions.y]
+			_expect(travel != null, "The selected activity must use its actual new scenery: " + name)
+			_expect(game.get("_controls").get("pads").size() == 6,
+				"Practice must not advertise unavailable Fury/power pads.")
+			if travel == null:
+				continue
+			var screen := Rect2(Vector2.ZERO, Vector2(viewport.size)).grow(1)
+			for node: VisualInstance3D in travel.find_children("*", "VisualInstance3D", true, false):
+				_expect(_geometry_fits(node, camera, screen),
+					"All original travel/ritual geometry and signs must fit: %s / %s" % [name, node.name])
+			if request.get("ritual", "") == "mural":
+				_expect(travel.get("_painted") > 1,
+					"Genuine mural hits must reveal the actual banner texture.")
+			if request["mode"] == "away_bus":
+				travel.call("present", 0.13, 0.6, false)
+				_expect(absf((travel.get("wipers")[0] as Node3D).rotation.z) > 0.1,
+					"The original bus wipers must really follow the beat.")
+				travel.call("present", 0.13, 0.6, true)
+				_expect(is_zero_approx((travel.get("wipers")[0] as Node3D).rotation.z),
+					"Reduced motion must freeze the decorative wipers.")
+			_expect(get_root().get_texture().get_image().save_png(_folder.path_join(
+				"activity_" + name + ".png")) == OK, "Capture real new scenery and judged input.")
 
 func _test_real_input(game: Node, settings: Node) -> void:
 	var setups: Array[Dictionary] = [
@@ -266,6 +436,21 @@ func _test_cast_and_cameras(game: Node, settings: Node) -> void:
 		else:
 			_expect((view.get("beach_balls")[7] as Node3D).visible, "Untapped balls must really obstruct.")
 	settings.call("set_value", "accessibility/reduced_motion", true)
+	state.get("fury").set("protection_left", 6.0)
+	view.call("present")
+	_expect((view.get("_tornado") as Node3D).visible,
+		"Scarf Tornado must have a real visible original model, including with reduced effects.")
+	_expect(is_zero_approx((view.get("_tornado") as Node3D).rotation.y),
+		"Reduced motion must freeze the scarf tornado.")
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var viewport := view.get("world_viewport") as SubViewport
+	var draw_calls := viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE,
+		Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME) + viewport.get_render_info(
+			Viewport.RENDER_INFO_TYPE_SHADOW, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME)
+	_expect(draw_calls < 90, "The original tornado must stay within the final visible/shadow budget.")
+	_expect(get_root().get_texture().get_image().save_png(_folder.path_join(
+		"actual_scarf_tornado.png")) == OK, "Capture the original visible scarf tornado.")
 
 func _test_advertised_models() -> void:
 	var stage := Stage.new()
@@ -297,10 +482,19 @@ func _test_advertised_models() -> void:
 			signatures[family] = []
 		signatures[family].append(signature)
 	stage.purpose = "share"
-	for mode in ["quick", "workshop"]:
-		stage.call("configure", {"tb_mode_snapshot": mode, "tb_banner_snapshot": Banner.new().to_data(),
+	for mode in ["quick", "workshop", "daily", "mural"]:
+		var data := {"tb_mode_snapshot": mode, "tb_banner_snapshot": Banner.new().to_data(),
 			"tb_club_snapshot": "BUCKETWICK ROVERS", "tb_ground_snapshot": 0,
-			"tb_score_snapshot": [4200], "tb_stars": 3, "tb_football": "1 : 2"})
+			"tb_score_snapshot": [4200], "tb_stars": 3, "tb_football": "1 : 2"}
+		if mode == "daily":
+			data["tb_daily_snapshot"] = Daily.challenge("2026-01-19")
+			data["tb_ground_snapshot"] = data["tb_daily_snapshot"]["ground"]
+			data["tb_daily_streak"] = 365
+			data["tb_assisted"] = true
+		elif mode == "mural":
+			data["tb_mode_snapshot"] = "derby_ritual"
+			data["tb_mural_snapshot"] = true
+		stage.call("configure", data)
 		await _model_image(stage, "frozen_share_" + mode)
 	get_root().remove_child(stage)
 	stage.free()

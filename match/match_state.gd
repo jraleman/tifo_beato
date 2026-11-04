@@ -18,6 +18,8 @@ const Gate = preload("res://games/tifo_beato/sound/bleed_gate.gd")
 const Frame = preload("res://games/tifo_beato/sound/sound_frame.gd")
 const Event = preload("res://games/tifo_beato/sound/sound_event.gd")
 const Banner = preload("res://games/tifo_beato/workshop/banner.gd")
+const Chant = preload("res://games/tifo_beato/chart/chant_chart.gd")
+const Moments = preload("res://games/tifo_beato/match/best_moments.gd")
 var chart: Chart
 var judge: Judge
 var life := Life.new()
@@ -43,6 +45,9 @@ var player_hits: Array[int] = [0, 0]
 var player_attempts: Array[int] = [0, 0]
 var events: Array[Dictionary] = []
 var event_log: Array[Dictionary] = []
+var classified: Array[Event] = []
+var moments := Moments.new()
+var visual_phase: Dictionary = {}
 var bonus := 0.0
 var goal_moment_left := 0.0
 var goal_moment := ""
@@ -68,6 +73,8 @@ var _keeper_high := false
 var _last_combo_tier := 0
 var _low_life_warning := false
 var _poetry_blocked_until := 0.0
+var _recent_level := 0.0
+var _next_note_id := 10000
 
 func _init(seed_number := 1, ground_index := 0, group_pool := 0,
 	configuration: Dictionary = {}, with_war := false) -> void:
@@ -76,22 +83,44 @@ func _init(seed_number := 1, ground_index := 0, group_pool := 0,
 	pool = clampi(group_pool, 0, 4)
 	_settings = configuration.duplicate(true)
 	_settings["pool"] = pool
+	var custom: Array[Chant] = []
+	custom.assign(configuration.get("custom_charts", []))
 	chart = Chart.new(seed_value, pool, int(configuration.get("speed", 100)), with_war,
 		float(configuration.get("half_seconds", 120.0)),
-		float(configuration.get("walkin_seconds", 20.0)))
+		float(configuration.get("walkin_seconds", 20.0)), custom,
+		bool(configuration.get("single_pass", false)))
+	if bool(configuration.get("response_rests", false)):
+		for index in chart.phases.size():
+			var phrase := chart.phases[index]
+			if str(phrase["kind"]) == "response":
+				chart.notes.append({"id": chart.notes.size(), "phase": index,
+					"t": float(phrase["t"]) + 0.18, "kind": "rest", "band": 0,
+					"duration": maxf(0.01, float(phrase["end"]) - float(phrase["t"]) - 0.36),
+					"hold_kind": "shout"})
+		chart.notes.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			return float(a["t"]) < float(b["t"]))
 	two_capos = bool(configuration.get("two_capos", false))
 	if two_capos:
 		chart.insert_handoff_leads()
 	judge = Judge.new(chart.notes, _settings)
 	life.never_dies = bool(configuration.get("never_dies", false))
 	life.drain_scale = 0.75 if pool == 1 else 1.0
-	crowd = Crowd.new(int(Options.GROUNDS[ground]["crowd"]))
+	if bool(configuration.get("recording", false)):
+		life.drain_scale = 0.0
+	life.morale_max = 100.0 + clampf(float(configuration.get("morale_bonus", 0.0)), 0.0, 25.0)
+	life.morale = life.morale_max
+	crowd = Crowd.new(roundi(int(Options.GROUNDS[ground]["crowd"])
+		* clampf(float(configuration.get("crowd_scale", 1.0)), 1.0, 1.25)))
 	sim = Sim.new(seed_value)
 	tifo.max_tier = int(Options.GROUNDS[ground]["tiers"])
 	tifo.streak_needed = 9 if pool == 3 else 12
 	disruptions = Disruptions.new(chart.disruption_slots(), seed_value,
-		int(configuration.get("rivals", 0)))
+		2 if bool(configuration.get("practice", false)) else int(configuration.get("rivals", 0)),
+		bool(configuration.get("hostile", false)))
 	chaos = Chaos.new(seed_value, ground, pool == 4)
+	chaos.enabled = not bool(configuration.get("practice", false))
+	if configuration.has("daily_modifier"):
+		chaos.set_lineup([str(configuration["daily_modifier"])])
 	var responses: Array[float] = []
 	for phrase in chart.phases:
 		if str(phrase["kind"]) == "response":
@@ -105,7 +134,10 @@ func _init(seed_number := 1, ground_index := 0, group_pool := 0,
 	gate.headphones = bool(configuration.get("headphones", false))
 
 func phase() -> Dictionary:
-	return chart.phase_at(time)
+	return visual_phase if not visual_phase.is_empty() else chart.phase_at(time)
+
+func phase_index() -> int:
+	return int(visual_phase["index"]) if not visual_phase.is_empty() else chart.phase_index(time)
 
 func judging(at: float) -> bool:
 	return chart.is_judging(at) or at >= _drum_start and at < _drum_end
@@ -134,6 +166,7 @@ func stars() -> int:
 	return 2 if accuracy >= 0.6 else 1
 
 func consume(raw: Frame) -> void:
+	classified.clear()
 	if complete:
 		return
 	var frame := Frame.new(raw.t - _latency_ms / 1000.0, raw.level, raw.flux,
@@ -141,6 +174,10 @@ func consume(raw: Frame) -> void:
 	var in_call := judging(frame.t)
 	var classify_tail := _was_judging and frame.t < _last_call_end + 0.18
 	if not in_call and not classify_tail:
+		if bool(_settings.get("response_rests", false)) \
+			and str(chart.phase_at(frame.t)["kind"]) == "response" \
+			and gate.accepts_level(frame.t, frame.level):
+			judge.observe(frame)
 		if _was_judging:
 			classifier.reset()
 		_was_judging = false
@@ -154,6 +191,9 @@ func consume(raw: Frame) -> void:
 		judge.observe(frame)
 	for event in classifier.consume(frame):
 		if not gate.accepts(event, judging(event.t)):
+			continue
+		classified.append(event)
+		if bool(_settings.get("recording", false)):
 			continue
 		if life.dead:
 			if event.kind == Event.ONSET:
@@ -238,7 +278,8 @@ func advance(now: float) -> Array[Dictionary]:
 		if str(current["kind"]) == "halftime" and _keeper_half == 1 \
 			or time >= chart.duration and _keeper_half == 2:
 			keeper_full_half = keeper_full_half or _keeper_held
-		if time < chart.duration and str(current["kind"]) in ["call", "sustain", "response"]:
+		if not bool(_settings.get("practice", false)) and time < chart.duration \
+			and str(current["kind"]) in ["call", "sustain", "response"]:
 			for event in sim.advance(0.01, crowd.energy, fury.ref_distraction):
 				fury.ref_distraction = false
 				var kind := str(event["kind"])
@@ -255,6 +296,7 @@ func advance(now: float) -> Array[Dictionary]:
 			_emit("chaos_start", Chaos.CAPTIONS[started])
 			_prepare_challenge()
 		gate.prune(time - _latency_ms / 1000.0)
+		moments.capture(visual_checkpoint())
 		if life.walkout or time >= chart.duration + 0.5 \
 			+ maxf(0.0, _latency_ms) / 1000.0:
 			complete = true
@@ -264,14 +306,16 @@ func advance(now: float) -> Array[Dictionary]:
 	return reached
 
 func activate_fury() -> bool:
-	if life.dead or not fury.activate(judging(time)):
+	if bool(_settings.get("practice", false)) or life.dead or not fury.activate(judging(time)):
 		return false
 	life.refill(100.0)
 	_emit("fury", "CURVA FURY! Eight seconds. One whole stand.")
+	moments.nominate("fury", time, roundi(_recent_level * 100.0))
 	return true
 
 func activate_power() -> String:
-	if life.dead or str(phase()["kind"]) not in ["call", "sustain", "response"]:
+	if bool(_settings.get("practice", false)) or life.dead \
+		or str(phase()["kind"]) not in ["call", "sustain", "response"]:
 		return ""
 	var activated := fury.activate_power()
 	if activated == "drum":
@@ -280,6 +324,8 @@ func activate_power() -> String:
 		disruptions.active = ""
 	if not activated.is_empty():
 		_emit("power", "POWER-UP: " + activated.to_upper())
+		if activated == "tornado":
+			moments.nominate("tornado", time, judge.combo)
 	return activated
 
 func achievement_ids() -> PackedStringArray:
@@ -326,8 +372,9 @@ func _publish(results: Array[Dictionary]) -> void:
 			player_hits[seat] += 1
 		life.refill(float(result["refill"]))
 		crowd.judge(int(result["grade"]))
-		fury.award(int(result["grade"]), str(result["kind"]), float(result["level"]),
-			float(result["duration"]))
+		if not bool(_settings.get("practice", false)):
+			fury.award(int(result["grade"]), str(result["kind"]), float(result["level"]),
+				float(result["duration"]))
 		tifo.judge(judge.perfect_streak)
 		chaos.judge(result)
 		_resolve_chaos()
@@ -344,7 +391,7 @@ func _publish(results: Array[Dictionary]) -> void:
 			_add_bonus(50.0, seat)
 			if str(result["note"]["goal"]) == "goal_away" and hits == 8:
 				life.refill(35.0)
-				life.morale = minf(100.0, life.morale + 1.0)
+				life.morale = minf(life.morale_max, life.morale + 1.0)
 				_emit("defiance", "EIGHT BEATS OF DEFIANCE. The scarf is back on its feet.")
 			elif str(result["note"]["goal"]) == "goal_home" and hits == 8:
 				_reveal_tifo()
@@ -357,13 +404,22 @@ func _publish(results: Array[Dictionary]) -> void:
 			if not line.is_empty():
 				events.append({"kind": "commentator", "text": line})
 		var milestone := 6 if pool == 4 else 8
-		if judge.combo >= milestone and judge.combo / milestone > _last_power_combo:
+		if not bool(_settings.get("practice", false)) \
+			and judge.combo >= milestone and judge.combo / milestone > _last_power_combo:
 			_last_power_combo = judge.combo / milestone
 			fury.offer_power(["megaphone", "drum", "tornado", "ref"][
 				(_last_power_combo - 1) % 4])
 		events.append({"kind": "grade", "result": result, "seat": seat})
 		event_log.append({"t": time, "grade": result["grade"], "kind": result["kind"],
 			"seat": seat, "error": result["error"]})
+		_recent_level = clampf(float(result["level"]), 0.0, 1.0)
+		moments.judged(time, result)
+		moments.capture(visual_checkpoint(), true)
+		if (str(result["kind"]) == "sing" or str(result["kind"]) == "hold" \
+			and str(result["note"].get("hold_kind", "")) == "sing") and int(result["grade"]) < 3 \
+			and int(result["band"]) != int(result["note"]["band"]):
+			moments.nominate("off_key", time,
+				absi(int(result["band"]) - int(result["note"]["band"])) * 50)
 
 func _reveal_tifo() -> void:
 	if chaos.active == "seagull":
@@ -373,6 +429,21 @@ func _reveal_tifo() -> void:
 		_add_bonus(600.0 * tier * banner.bonus_scale() * (1.5 if pool == 3 else 1.0)
 			+ banner.mishaps.size() * 30.0)
 		_emit("tifo", Tifo.NAMES[tier])
+		moments.nominate("tifo", time, tier * 20)
+
+func visual_checkpoint() -> Array:
+	var current := phase()
+	return [roundi(time * 100.0), roundi(life.life), roundi(life.morale),
+		roundi(crowd.energy), roundi(crowd.sync * 100.0), roundi(crowd.phase_scatter * 1000.0),
+		roundi(fury.charge), roundi(fury.active_left * 100.0),
+		3 if fury.protection_left > 0.0 else maxi(0, Moments.POWERS.find(fury.active_power)),
+		roundi((fury.protection_left if fury.protection_left > 0.0 else fury.power_left) * 100.0),
+		tifo.tier, roundi(tifo.reveal_left * 100.0), sim.home, sim.away, sim.zone,
+		1 if sim.home_possession else 0, roundi(sim.time * 100.0),
+		maxi(0, Moments.CHAOS.find(chaos.active)), chaos.progress,
+		maxi(0, Moments.DISRUPTIONS.find(disruptions.active)),
+		maxi(0, Moments.PHASES.find(str(current["kind"]))),
+		roundi(float(current["beat"]) * 1000.0), 1 if life.dead else 0]
 
 func _resolve_chaos() -> void:
 	for result in chaos.resolutions:
@@ -468,7 +539,7 @@ func _prepare_challenge() -> void:
 func _append_note(template: Dictionary, phase_index: int) -> void:
 	var phrase: Dictionary = chart.phases[phase_index]
 	var note := template.duplicate(true)
-	note["id"] = 30000 + judge.notes.size()
+	note["id"] = _new_note_id()
 	note["t"] = float(phrase["t"]) + float(note["beat"]) * float(phrase["beat"])
 	note["duration"] = float(note["duration"]) * float(phrase["beat"])
 	note["phase"] = phase_index
@@ -488,8 +559,15 @@ func _add_bonus(points: float, seat := -1) -> void:
 	bonus += points
 	player_points[active_player if seat < 0 else seat] += points
 
+func _new_note_id() -> int:
+	var id := _next_note_id
+	_next_note_id += 1
+	return id
+
 func _emit(kind: String, caption: String) -> void:
 	events.append({"kind": kind, "text": caption, "t": time})
+	if kind in ["fury", "power", "tifo", "goal_home", "goal_away"]:
+		moments.capture(visual_checkpoint(), true)
 	var line := commentator.line(kind, time, time < _poetry_blocked_until)
 	if not line.is_empty():
 		events.append({"kind": "commentator", "text": line})
@@ -521,7 +599,7 @@ func _drum_solo() -> void:
 	judge.notes = judge.notes.filter(func(note: Dictionary) -> bool:
 		return bool(note["done"]) or float(note["t"]) < start or float(note["t"]) >= end)
 	for hit in 32:
-		judge.notes.append({"id": 10000 + hit, "t": start + hit * beat * 0.5,
+		judge.notes.append({"id": _new_note_id(), "t": start + hit * beat * 0.5,
 			"kind": "beat", "duration": 0.0, "band": 0, "hold_kind": "shout",
 			"done": false, "coverage": 0.0, "rest_broken": false, "candidate": {},
 			"phase": chart.phase_index(start), "beat": hit * 0.5})
@@ -562,7 +640,7 @@ func _restart_loop(at: float) -> void:
 		var note := source.duplicate(true)
 		note["t"] = start + float(source["beat"]) * beat
 		note["duration"] = float(source["duration"]) * beat
-		note["id"] = 20000 + judge.notes.size()
+		note["id"] = _new_note_id()
 		note["phase"] = _phase
 		note["done"] = false
 		note["coverage"] = 0.0

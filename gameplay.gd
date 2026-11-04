@@ -22,6 +22,12 @@ const Lobby = preload("res://games/tifo_beato/ui/lobby.gd")
 const Soundcheck = preload("res://games/tifo_beato/ui/soundcheck.gd")
 const Widgets = preload("res://games/tifo_beato/ui/widgets.gd")
 const Registration = preload("res://games/tifo_beato/game.gd")
+const Away = preload("res://games/tifo_beato/career/away_days.gd")
+const Derby = preload("res://games/tifo_beato/career/derby_week.gd")
+const Creator = preload("res://games/tifo_beato/chart/chant_creator.gd")
+const Daily = preload("res://games/tifo_beato/career/daily_derby.gd")
+const Moments = preload("res://games/tifo_beato/match/best_moments.gd")
+const Chant = preload("res://games/tifo_beato/chart/chant_chart.gd")
 var _state: State
 var _war: War
 var _build: Build
@@ -56,7 +62,9 @@ var _mode := "career"
 var _stage := "lobby"
 var _seat := 0
 var _ground := 0
+var _selected_ground := 0
 var _pool := 0
+var _selected_pool := 0
 var _seed := 1
 var _set_complete := false
 var _input_started := false
@@ -84,6 +92,21 @@ var _session_started := 0
 var _resume_pending := false
 var _finished_round_id := -1
 var _capture_inset := 0.0
+var _creator := Creator.new()
+var _match_configuration: Dictionary = {}
+var _main_state: State
+var _travel_to_match := false
+var _travel_kind := ""
+var _with_war := false
+var _run_id := ""
+var _replay_clip: Dictionary = {}
+var _replay_saved_state: State
+var _replay_toolbar: VBoxContainer
+var _replay_panel: PanelContainer
+var _replay_seek: HSlider
+var _replay_label: Label
+var _replay_playing := false
+var _replay_time := 0.0
 
 func game_id() -> String:
 	return Options.GAME_ID
@@ -103,7 +126,9 @@ func _prepare_session() -> void:
 	for index in 5:
 		if str(Options.GROUNDS[index]["id"]) == str(selected.get("id", "")):
 			_ground = index
+	_selected_ground = _ground
 	_pool = int(GameSession.character_for_player(0).get("pool", 0))
+	_selected_pool = _pool
 	for seat in 2:
 		_instruments[seat] = Settings.tunable_choice(Options.INPUT)
 		if _mic_profiles[seat].load_file(seat) != OK:
@@ -166,6 +191,10 @@ func _begin_first_round() -> void:
 	_show_lobby()
 
 func _show_lobby(tab := -1) -> void:
+	_close_replay()
+	if _mode == "daily":
+		_ground = _selected_ground
+		_pool = _selected_pool
 	_stop_input()
 	_audio.stop()
 	_stage = "lobby"
@@ -181,6 +210,7 @@ func _show_lobby(tab := -1) -> void:
 	_lobby.banner = _banner
 	_lobby.career = _career
 	_lobby.records = _records
+	_lobby.creator = _creator
 	_lobby.ground = _ground
 	_lobby.player_count = GameSession.player_count()
 	_lobby.instruments = _instruments.duplicate()
@@ -204,31 +234,71 @@ func _show_lobby(tab := -1) -> void:
 	_lobby.identity_changed.connect(_identity_edited)
 	_lobby.fabric_selected.connect(_fabric_selected)
 	_lobby.exit_requested.connect(func() -> void: Router.goto(main_menu_scene))
+	_lobby.chant_saved.connect(_save_chant)
+	_lobby.replay_requested.connect(_show_replay)
 	_hud.add_child(_lobby)
 	_lobby.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 func _return_to_lobby() -> void:
 	_round_over.hide()
 	_railway_button.hide()
-	_show_lobby(2 if _mode == "workshop" else 0)
+	_show_lobby(_activity_tab())
+
+func _activity_tab() -> int:
+	if _mode.begins_with("creator_"):
+		return 6
+	if _mode.begins_with("away_"):
+		return 4
+	if _mode == "derby_ritual":
+		return 5
+	if _mode == "daily":
+		return 7
+	return 2 if _mode == "workshop" else 0
 
 func _choose_instrument(seat: int, instrument: int) -> void:
 	_instruments[seat] = instrument
 
 func _choose_play(request: Dictionary) -> void:
 	var requested := request.duplicate(true)
+	var mode := str(requested.get("mode", ""))
+	if mode == "creator_reload":
+		_show_lobby(6)
+		return
+	if mode in ["creator_practice", "creator_challenge"]:
+		var error := Creator.validate(requested.get("chant"))
+		if not error.is_empty() or mode == "creator_challenge" and GameSession.player_count() != 2:
+			_save_status = error if not error.is_empty() else "Choose two-human hot seat for a chant challenge."
+			_show_lobby(6)
+			return
+	if mode == "daily":
+		if not Daily.valid_date(Daily.today()):
+			_save_status = "Daily Derby needs a valid system calendar date."
+			_show_lobby(7)
+			return
+		requested = Daily.challenge(Daily.today())
 	if str(requested.get("mode", "")) == "workshop" and not _pending_request.is_empty():
 		requested = _pending_request.duplicate(true)
 		requested["prebuild"] = true
 		_pending_request.clear()
 	_request = requested
-	_ground = int(_request.get("ground", 0))
+	_ground = int(_request.get("ground", _ground))
 	_mode = str(_request.get("mode", "quick"))
+	if _mode != "daily":
+		_selected_ground = _ground
 	for seat in GameSession.player_count():
 		if _instruments[seat] == 0 and not _mic_profiles[seat].calibrated:
 			_pending_request = _request.duplicate(true)
 			_open_soundcheck(seat)
 			return
+	if _mode == "career" and Away.is_away(int(_request.get("stop", 0))) \
+		and not bool(_request.get("travel_chosen", false)):
+		_show_card("THE AWAY SCARVES", "Take an optional bus singalong or station echo before kickoff.\n"
+			+ "Potholes and echoes ask for silence. Skip travel without losing stars or bonuses.",
+			0, "Take the bus", func() -> void: _select_travel("bus"))
+		var body := _ready_button.get_parent()
+		Widgets.button(body, "Take the train", func() -> void: _select_travel("station"))
+		Widgets.button(body, "Straight to kickoff", func() -> void: _select_travel(""))
+		return
 	if _mode == "career" and not bool(_request.get("prepared", false)) \
 		and not bool(_request.get("prebuild", false)):
 		_show_card("THE LOCK-UP GARAGE", "Your saved banner: %.0f%% quality, %d mishaps.\n" % [
@@ -243,7 +313,29 @@ func _choose_play(request: Dictionary) -> void:
 		return
 	_start_round()
 
+func _select_travel(kind: String) -> void:
+	if not _contacts_released():
+		return
+	var request := _request.duplicate(true)
+	request["travel"] = kind
+	request["travel_chosen"] = true
+	_close_modal()
+	_input_locked = false
+	_choose_play(request)
+
+func _save_chant(slot: int, data: Dictionary) -> void:
+	var message := ""
+	if _records.save_chant(slot, data) != OK:
+		_save_status = "Chant was not saved; the previous slot was preserved."
+		message = _save_status
+	else:
+		message = "Chant saved to local slot %d." % (slot + 1) if _save_progress() == OK \
+			else "Chant was not saved. Your draft is still open; the previous file was preserved."
+	if _lobby != null and _lobby.editor != null:
+		_lobby.editor.show_status(message)
+
 func _reset_round_state() -> void:
+	_close_replay()
 	_close_lobby()
 	_close_modal()
 	_stop_input()
@@ -258,6 +350,7 @@ func _reset_round_state() -> void:
 	_seat = 0
 	_ground = int(_request.get("ground", _ground))
 	_mode = str(_request.get("mode", "career" if GameSession.is_single_player() else "duel"))
+	_pool = int(_request.get("pool", _selected_pool))
 	_seed = int(_request.get("seed", _rng.randi_range(1, 2000000000)))
 	_prebuild = bool(_request.get("prebuild", false))
 	_halftime_played = false
@@ -267,11 +360,47 @@ func _reset_round_state() -> void:
 	_war = null
 	_build = null
 	_steward = null
+	_main_state = null
+	_travel_to_match = false
+	_travel_kind = ""
+	_run_id = "%d_%d" % [roundi(Time.get_unix_time_from_system() * 1000.0), Time.get_ticks_usec()]
 	var configuration := _configuration.duplicate(true)
 	configuration["two_capos"] = _mode == "two_capos"
-	var with_war := _mode == "career" and int(_request.get("stop", 0)) \
+	_with_war = _mode == "career" and int(_request.get("stop", 0)) \
 		== int(Options.GROUNDS[_ground]["matches"]) - 1
-	_state = State.new(_seed, _ground, _pool, configuration, with_war)
+	if _mode == "daily":
+		var daily := Daily.challenge(Daily.today())
+		_request = daily
+		_ground = int(daily["ground"])
+		_pool = int(daily["pool"])
+		_seed = int(daily["seed"])
+		configuration["daily_modifier"] = daily["modifier"]
+		_with_war = true
+	elif _mode in ["away_bus", "away_station"]:
+		configuration.merge(Away.configuration(_mode.trim_prefix("away_"),
+			int(_request.get("tempo", 100))), true)
+	elif _mode == "away_hostile":
+		configuration["hostile"] = true
+	elif _mode == "derby_ritual":
+		configuration.merge({"custom_charts": Derby.charts(str(_request.get("ritual", "pub")))
+			if str(_request.get("ritual", "")) != "mural" else [],
+			"single_pass": true, "walkin_seconds": 1.5, "practice": true}, true)
+	elif _mode.begins_with("creator_"):
+		if _request.has("chant"):
+			_creator.restore(_request["chant"])
+		configuration.merge({"custom_charts": [_creator.to_chart(_mode == "creator_record")],
+			"single_pass": true, "walkin_seconds": 2.0, "practice": true,
+			"recording": _mode == "creator_record"}, true)
+		if _mode == "creator_record":
+			configuration["speed"] = 100
+	if _mode == "career" and Away.is_away(int(_request.get("stop", 0))):
+		configuration["hostile"] = true
+	if _mode == "career" and _ground == 3 and int(_request.get("stop", 0)) == 3:
+		var preparation := Derby.bonuses(_records.data["derby"])
+		configuration["morale_bonus"] = preparation["morale"]
+		configuration["crowd_scale"] = preparation["crowd_scale"]
+	_match_configuration = configuration
+	_state = State.new(_seed, _ground, _pool, configuration, _with_war)
 	_state.banner = _banner
 	_state.chart.rebuild_beats()
 	_customize_view()
@@ -288,12 +417,28 @@ func _handled_reset() -> void:
 	_response_queue.clear()
 
 func _activate_round() -> void:
-	if _prebuild or _mode == "workshop":
+	if _prebuild or _mode == "workshop" \
+		or _mode == "derby_ritual" and str(_request.get("ritual", "")) == "mural":
 		_begin_build()
 	elif _mode in ["war", "duel"]:
 		_begin_war(false)
 	elif _mode in ["flag", "coat"]:
 		_begin_steward(_mode)
+	else:
+		_begin_prelude()
+
+func _begin_prelude() -> void:
+	if _mode == "career" and not str(_request.get("travel", "")).is_empty():
+		_main_state = _state
+		_travel_kind = str(_request["travel"])
+		_request["travel"] = ""
+		_travel_to_match = true
+		var configuration := _configuration.duplicate(true)
+		configuration.merge(Away.configuration(_travel_kind), true)
+		_state = State.new(_seed, _ground, _pool, configuration)
+		_state.banner = _banner
+		_all_results.clear()
+		_begin_match()
 	elif _mode == "career" and int(_request.get("stop", 0)) \
 		== int(Options.GROUNDS[_ground]["matches"]) - 1:
 		_begin_steward("flag" if _ground % 2 == 0 else "coat")
@@ -304,24 +449,40 @@ func _begin_match(start := 0.0) -> void:
 	_stage = "match"
 	_customize_view()
 	_view.configure(_state)
-	_view.configure_activity(_state, "match")
+	var scene_kind := "away_" + _travel_kind if _travel_to_match else _mode
+	_view.activity_context = str(_request.get("ritual", "rehearsal"))
+	_view.configure_activity(_state, scene_kind if scene_kind in [
+		"away_bus", "away_station", "derby_ritual"] else "match")
 	_stage_last_time = start
 	_audio.play_track(_state.chart.beats, _state.chart.duration + 1.0, start)
 	_match_hud.configure(_state, "match")
 	_start_input()
+	if _mode == "creator_record":
+		_creator.begin(float(_state.chart.phases[1]["t"]))
+		_caption("RECORD: your instrument becomes sixteenth-grid notes. No microphone audio is saved.")
+		return
+	if _mode.begins_with("away_") or _travel_to_match:
+		_caption("Wipers set your chosen beat; potholes are Rests." if scene_kind == "away_bus" else (
+			"Call once, then leave room for the station's one-beat echo." if scene_kind == "away_station"
+			else "HOSTILE END: twice the safe disruptions. Your basic timing is unchanged."))
+		return
 	_caption("Walk-in: get comfortable. The guide drum sets your tempo." if start == 0.0 else (
 		"SECOND HALF. Your scarf has unfinished business."))
 
 func _begin_build() -> void:
 	_stage = "workshop"
-	_build = Build.new(_banner, int(Options.GROUNDS[_ground]["budget"]), _seed, _configuration)
+	var design := _banner
+	if _mode == "derby_ritual":
+		design = Banner.new()
+		design.from_data(_banner.to_data())
+	_build = Build.new(design, int(Options.GROUNDS[_ground]["budget"]), _seed, _configuration)
 	var beats: Array[float] = []
 	for pulse in 82:
 		beats.append(pulse * _build.beat_seconds)
 	_audio.play_track(beats, _build.duration + 1.0)
 	_stage_last_time = 0.0
 	_match_hud.configure(_build, "workshop")
-	_view.configure_activity(_build, "workshop")
+	_view.configure_activity(_build, "mural" if _mode == "derby_ritual" else "workshop")
 	_start_input()
 
 func _begin_steward(kind: String) -> void:
@@ -341,7 +502,7 @@ func _begin_war(halftime: bool) -> void:
 	_stop_input()
 	_stage = "war"
 	_war_is_halftime = halftime
-	_war = War.new(_seed, _ground if halftime else int(_request.get("rival", 0)),
+	_war = War.new(_seed, int(_request.get("rival", _ground)) if halftime else int(_request.get("rival", 0)),
 		_mode == "duel", _configuration)
 	_handed_turns.clear()
 	_audio.play_track(_war.beats, _war.duration + 1.0)
@@ -408,6 +569,8 @@ func _stop_input() -> void:
 
 func _process(delta: float) -> void:
 	super(delta)
+	if _stage == "replay":
+		_update_replay(delta)
 	_round_elapsed = _played_seconds
 	if _ready_button != null:
 		_ready_button.disabled = not _contacts_released()
@@ -439,6 +602,8 @@ func _update_round(_delta: float, _time_left: float) -> void:
 				"match":
 					reached.append_array(_state.advance(frame.t))
 					_state.consume(frame)
+					if _mode == "creator_record":
+						_creator.capture(_state.classified)
 				"war":
 					reached.append_array(_war.advance(frame.t))
 					_war.consume(frame)
@@ -528,7 +693,7 @@ func _update_match(now: float, reached: Array[Dictionary] = []) -> void:
 		if length > 0.0 and not _state.judging(now):
 			var original: Dictionary = _state.chart.phases[int(phase["call_phase"])]
 			_audio.response(call, float(original["t"]), length, _state.crowd.phase_scatter,
-				_state.fury.active_power == "megaphone")
+				_state.fury.active_power == "megaphone", int(phase.get("response_style", 0)))
 			_state.register_output(now, _source.measured_bleed(), length)
 		_response_queue.clear()
 	_audio.guide_enabled(_state.chaos.active not in ["power_cut", "drum_skin"])
@@ -539,14 +704,39 @@ func _update_match(now: float, reached: Array[Dictionary] = []) -> void:
 	_best_streaks[_seat] = _state.judge.best_combo
 	if not _halftime_played and str(_state.phase()["kind"]) == "halftime" \
 		and now >= _state.chart.halftime_start + _state.capture_tail() \
-		and _mode == "career" and int(_request.get("stop", 0)) \
-		== int(Options.GROUNDS[_ground]["matches"]) - 1:
+		and _with_war and not _travel_to_match:
 		_halftime_played = true
 		_begin_war(true)
 		return
+	if _mode == "creator_record" and now >= float(_state.chart.phases[1]["end"]) \
+		+ _state.capture_tail() + 0.02:
+		_creator.recording = false
+		_set_complete = true
+		_end_round()
+		_save_status = "Draft recorded. Review the notes and save a slot; no microphone audio was stored."
+		var error := Creator.validate(_creator.payload())
+		if not error.is_empty():
+			_save_status = "Draft recorded; edit before saving: " + error
+		_show_lobby(6)
+		return
 	if _state.complete:
+		if _travel_to_match:
+			var quality := _state.judge.accuracy()
+			_records.record("away_" + _travel_kind, _state.noise(), _state.stars(),
+				_state.judge.best_combo)
+			_state = _main_state
+			_main_state = null
+			_travel_to_match = false
+			_scores.fill(0)
+			_best_streaks.fill(0)
+			_all_results.clear()
+			_save_progress()
+			_show_card("THE SCARVES HAVE ARRIVED", "%.0f%% travel accuracy.\n" % (quality * 100.0)
+				+ "The away match keeps its own score, stars and normal timing rules.",
+				0, "Continue to the away match", _begin_prelude)
+			return
 		_completed_states.append(_state)
-		if _mode == "split" and _seat == 0:
+		if _mode in ["split", "creator_challenge"] and _seat == 0:
 			_stop_input()
 			_audio.set_paused(true)
 			_show_card("SPLIT THE STANDS", "P1 banked %d Noise.\n" % _state.noise()
@@ -650,11 +840,8 @@ func _update_build(now: float, reached: Array[Dictionary] = []) -> void:
 				_banner.quality, _banner.mishaps.size()] + "The crowd loves it anyway.",
 				0, "Continue to kickoff", func() -> void:
 					_scores.fill(0)
-					if int(_request.get("stop", 0)) == int(Options.GROUNDS[_ground]["matches"]) - 1:
-						_begin_steward("flag" if _ground % 2 == 0 else "coat")
-					else:
-						_view.configure(_state)
-						_begin_match())
+					_best_streaks.fill(0)
+					_begin_prelude())
 		else:
 			_set_complete = true
 			_end_round()
@@ -685,7 +872,7 @@ func _update_steward(now: float) -> void:
 
 func _start_split_second() -> void:
 	_seat = 1
-	_state = State.new(_seed, _ground, _pool, _configuration)
+	_state = State.new(_seed, _ground, _pool, _match_configuration)
 	_state.banner = _banner
 	_state.chart.rebuild_beats()
 	_all_results.clear()
@@ -921,13 +1108,27 @@ func _finish_round() -> void:
 	_finished_round_id = _round_id
 	if not _completed_states.is_empty():
 		for completed in _completed_states:
-			_records.record(_record_key(), completed.noise(), completed.stars(),
-				completed.judge.best_combo)
-			for tier in completed.tifo.revealed:
-				var exhibit := "tifo_%d" % tier
-				if exhibit not in _records.data["exhibits"]:
-					_records.data["exhibits"].append(exhibit)
+			if not _mode.begins_with("creator_") and _mode != "daily":
+				_records.record(_record_key(), completed.noise(), completed.stars(),
+					completed.judge.best_combo)
+			if _mode in ["career", "quick", "split", "two_capos", "daily"]:
+				for tier in completed.tifo.revealed:
+					var exhibit := "tifo_%d" % tier
+					if exhibit not in _records.data["exhibits"]:
+						_records.data["exhibits"].append(exhibit)
 		_career.record(_ground, int(_request.get("stop", 0)), _state.stars(), _mode == "career")
+	if _mode == "derby_ritual":
+		var quality := _build.judge.accuracy() if _stage == "workshop" else _state.judge.accuracy()
+		Derby.record(_records.data["derby"], str(_request["ritual"]), quality * 100.0)
+	if _mode == "daily":
+		Daily.record(_records.data["daily"], str(_request["date"]),
+			_state.noise(), _state.stars(), _state.judge.best_combo)
+	if _mode in ["career", "quick", "split", "two_capos", "daily", "away_hostile"]:
+		for completed in _completed_states:
+			var clips := completed.moments.finish({"run": _run_id + "_%d" % completed.active_player,
+				"seed": completed.seed_value, "ground": completed.ground, "pool": completed.pool,
+				"banner": _banner.to_data(), "outfit": _outfit()})
+			_records.data["moments"] = Moments.merge(_records.data["moments"], clips)
 	for result in _war_results:
 		if int(result["winner"]) == 0 and _mode != "duel":
 			var id := str(War.RIVALS[int(result["rival"])]["id"])
@@ -942,6 +1143,12 @@ func _finish_round() -> void:
 		"tb_score_snapshot": _scores.duplicate(), "tb_combo_snapshot": _best_streaks.duplicate(),
 		"tb_seconds_snapshot": _played_seconds, "tb_group_snapshot": _club.group_name(),
 		"tb_club_snapshot": _club.club_name(), "tb_tifos_snapshot": _state.tifo.revealed.duplicate()}
+	if _mode == "daily":
+		_snapshot["tb_daily_snapshot"] = _request.duplicate(true)
+		_snapshot["tb_daily_streak"] = Daily.streak(_records.data["daily"], str(_request["date"]))
+	if _mode == "derby_ritual" and _stage == "workshop":
+		_snapshot["tb_banner_snapshot"] = _build.banner.to_data()
+		_snapshot["tb_mural_snapshot"] = true
 
 func _end_round() -> void:
 	if _set_complete and _finished_round_id == _round_id and not _round_active:
@@ -949,19 +1156,25 @@ func _end_round() -> void:
 	super()
 
 func _record_key() -> String:
-	return _career.stop_key(_ground, int(_request.get("stop", 0))) if _mode == "career" else (
-		"quick_%s_pool%d" % [Options.GROUNDS[_ground]["id"], _pool])
+	if _mode == "career":
+		return _career.stop_key(_ground, int(_request.get("stop", 0)))
+	if _mode.begins_with("away_") or _mode == "derby_ritual":
+		return _mode + "_" + str(_request.get("ritual", ""))
+	return "quick_%s_pool%d" % [Options.GROUNDS[_ground]["id"], _pool]
 
-func _save_progress() -> void:
+func _save_progress() -> Error:
 	_records.data["identity"] = _club.to_data()
 	_records.data["banner"] = _banner.to_data()
 	_records.data["stars"] = _career.stars.duplicate()
-	if _records.save_file() != OK:
+	var error := _records.save_file()
+	if error != OK:
 		_save_status = "PROGRESS NOT SAVED. The previous file was preserved."
 	Registration.refresh_gallery(manifest(), _records.data)
+	return error
 
 func _round_points_earned(player_one_total: int, player_two_total: int) -> int:
-	if not _set_complete or _mode in ["workshop", "flag", "coat"] \
+	if not _set_complete or _mode in ["workshop", "flag", "coat", "derby_ritual"] \
+		or _mode.begins_with("creator_") or _mode.begins_with("away_") \
 		or maxi(player_one_total, player_two_total) <= 0:
 		return 0
 	var points := super(player_one_total, player_two_total)
@@ -971,7 +1184,8 @@ func _round_points_earned(player_one_total: int, player_two_total: int) -> int:
 	return mini(points, 120)
 
 func _award_round_achievements(_one: int, _two: int) -> void:
-	if not _set_complete:
+	if not _set_complete or _mode.begins_with("creator_") or _mode == "derby_ritual" \
+		or _mode.begins_with("away_"):
 		return
 	for state in _completed_states:
 		for id in state.achievement_ids():
@@ -1012,8 +1226,8 @@ func _player_stats(seat: int) -> Dictionary:
 	if _stage == "workshop" and _build != null:
 		hits = _build.judge.hits
 		attempts = _build.judge.attempts
-		details = [{"label": "Banner quality", "value": "%.0f%%" % _banner.quality},
-			{"label": "Mishaps", "value": str(_banner.mishaps.size())}]
+		details = [{"label": "Banner quality", "value": "%.0f%%" % _build.banner.quality},
+			{"label": "Mishaps", "value": str(_build.banner.mishaps.size())}]
 	elif _stage == "war" and _war != null:
 		for event in _war.accepted:
 			if int(event.get("seat", 0)) == seat:
@@ -1021,7 +1235,7 @@ func _player_stats(seat: int) -> Dictionary:
 				hits += 1 if int(event.get("grade", 0)) < 3 else 0
 		details = [{"label": "Exchanges", "value": str(_war.exchange_wins[seat])}]
 	elif _state != null:
-		var state := _completed_states[seat] if _mode == "split" \
+		var state := _completed_states[seat] if _mode in ["split", "creator_challenge"] \
 			and seat < _completed_states.size() else _state
 		hits = state.player_hits[seat] if _mode == "two_capos" else state.judge.hits
 		attempts = state.player_attempts[seat] if _mode == "two_capos" else state.judge.attempts
@@ -1038,7 +1252,12 @@ func _describe_round_outcome(one: int, two: int) -> Dictionary:
 	var result := "THE WHISTLE"
 	var subtitle := "Round stopped early. No invented finish, promotion or Tokens."
 	if _set_complete:
-		if _mode == "workshop":
+		if _mode == "derby_ritual":
+			result = "THE NEIGHBOURHOOD IS READY"
+			var bonuses := Derby.bonuses(_records.data["derby"])
+			subtitle = "Derby preparation: +%d starting morale, +%d%% crowd. Bests do not stack." % [
+				bonuses["morale"], roundi((float(bonuses["crowd_scale"]) - 1.0) * 100.0)]
+		elif _mode == "workshop":
 			result = "THE BANNER IS READY"
 			subtitle = "%.0f%% quality. %d mishaps. Ready for the next match." % [
 				_banner.quality, _banner.mishaps.size()]
@@ -1053,10 +1272,16 @@ func _describe_round_outcome(one: int, two: int) -> Dictionary:
 				_war.exchange_wins[0], _war.exchange_wins[1]]
 		else:
 			result = "ONE WHOLE CURVA" if _mode == "two_capos" else ("%d STARS" % _state.stars())
-			if _mode == "split":
+			if _mode in ["split", "creator_challenge"]:
 				result = "DRAW" if one == two else ("P1 LEADS THE STAND" if one > two else "P2 LEADS THE STAND")
 			subtitle = "%s | Football %d : %d. Stars follow your chant, not the pitch." % [
 				Options.GROUNDS[_ground]["title"], _state.sim.home, _state.sim.away]
+			if _mode.begins_with("creator_") or _mode.begins_with("away_"):
+				subtitle = "Unranked activity. No career stars, achievement shortcuts or Tokens."
+			elif _mode == "daily":
+				subtitle = "DAILY %s | %s | streak %d | local-only board" % [
+					_request["date"], _request["title"],
+					Daily.streak(_records.data["daily"], str(_request["date"]))]
 	if not _save_status.is_empty():
 		subtitle += "\n" + _save_status
 	return {"result": result, "subtitle": subtitle, "color": Options.BUCKET}
@@ -1072,6 +1297,11 @@ func _share_payload() -> Dictionary:
 	payload.merge(_snapshot.duplicate(true), true)
 	payload["score_caption"] = "CURVA NOISE"
 	payload["footer"] = "Tifo Beato - Ninety minutes. No silence."
+	if _snapshot.has("tb_daily_snapshot"):
+		var daily: Dictionary = _snapshot["tb_daily_snapshot"]
+		payload["footer"] = "DAILY %s | %s | STREAK %d%s" % [
+			daily["date"], daily["title"], _snapshot["tb_daily_streak"],
+			" | ASSISTED" if bool(_snapshot.get("tb_assisted", false)) else ""]
 	return payload
 
 func _assisted() -> bool:
@@ -1159,6 +1389,7 @@ func _resize_layout() -> void:
 	var factor := Widgets.factor(_ui)
 	var portrait := dimensions.y > dimensions.x
 	_ui.size = dimensions
+	_controls.set_powers_enabled(_state == null or not bool(_state.get("_settings").get("practice", false)))
 	_controls.fit(dimensions.x - 24 * factor, factor, portrait)
 	_controls.position = Vector2(12 * factor, dimensions.y - _controls.size.y - 8 * factor)
 	_match_hud.factor = factor
@@ -1167,6 +1398,14 @@ func _resize_layout() -> void:
 	var header := hud_heights.x
 	_view.position = Vector2(0, header)
 	_view.size = Vector2(dimensions.x, maxf(1.0, _match_hud.size.y - header - hud_heights.y))
+	if _stage == "replay" and _replay_panel != null:
+		_replay_seek.custom_minimum_size.y = maxf(48 * factor, Widgets.touch_minimum(_ui))
+		Widgets.scale_tree(_replay_toolbar, factor)
+		var footer := minf(dimensions.y * 0.45, 330.0 * factor)
+		_view.position = Vector2.ZERO
+		_view.size = Vector2(dimensions.x, maxf(1.0, dimensions.y - footer))
+		_replay_panel.position = Vector2(8 * factor, dimensions.y - footer)
+		_replay_panel.size = Vector2(dimensions.x - 16 * factor, footer - 8 * factor)
 	_pause_button.size = Vector2(104, 54) * factor
 	_pause_button.position = Vector2(dimensions.x - _pause_button.size.x - 14 * factor, 8 * factor)
 	_pause_button.add_theme_font_size_override("font_size", roundi(20 * factor))
@@ -1195,6 +1434,106 @@ func _close_lobby() -> void:
 	if is_instance_valid(_lobby):
 		_lobby.queue_free()
 	_lobby = null
+
+func _show_replay(index: int) -> void:
+	if _round_active:
+		push_warning("Tifo Beato: finish the active round before replaying a moment.")
+		return
+	var clips: Array = _records.data["moments"]
+	if index < 0 or index >= clips.size():
+		_save_status = "That Best Moment is no longer available."
+		_show_lobby(8)
+		return
+	_stop_input()
+	_audio.stop()
+	_close_lobby()
+	_close_replay()
+	_replay_clip = clips[index].duplicate(true)
+	_replay_saved_state = _state if _state != null else _view.state
+	_state = State.new(int(_replay_clip["seed"]), int(_replay_clip["ground"]),
+		int(_replay_clip["pool"]), {"practice": true})
+	_state.banner.from_data(_replay_clip["banner"])
+	_stage = "replay"
+	_match_hud.hide()
+	_controls.hide()
+	_pause_button.hide()
+	_railway_button.hide()
+	_view.primary = _state.banner.primary
+	_view.secondary = _state.banner.secondary
+	_view.outfit = _replay_clip["outfit"].duplicate(true)
+	_view.configure(_state)
+	_view.build()
+	_view.configure_activity(_state, "match")
+	_replay_panel = PanelContainer.new()
+	_replay_panel.name = "ReadOnlyMomentControls"
+	_ui.add_child(_replay_panel)
+	var scroll := ScrollContainer.new()
+	scroll.follow_focus = true
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_replay_panel.add_child(scroll)
+	_replay_toolbar = VBoxContainer.new()
+	_replay_toolbar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_replay_toolbar)
+	_replay_label = Widgets.label(_replay_toolbar, "")
+	_replay_seek = HSlider.new()
+	_replay_seek.name = "MomentTimeline"
+	var rows: Array = _replay_clip["frames"]
+	_replay_seek.min_value = int(rows[0][0]) / 100.0
+	_replay_seek.max_value = int(rows[-1][0]) / 100.0
+	_replay_seek.step = 0.01
+	_replay_seek.value = _replay_seek.min_value
+	_replay_seek.custom_minimum_size.y = 48
+	_replay_seek.accessibility_name = "Read-only moment timeline, seconds"
+	_replay_seek.value_changed.connect(func(value: float) -> void:
+		_replay_time = value
+		_update_replay(0.0))
+	_replay_toolbar.add_child(_replay_seek)
+	var pause := Widgets.button(_replay_toolbar, "Pause replay", func() -> void:
+		_replay_playing = not _replay_playing)
+	pause.name = "ReplayPause"
+	Widgets.button(_replay_toolbar, "Replay from the beginning", func() -> void:
+		_replay_time = _replay_seek.min_value
+		_replay_playing = true)
+	Widgets.button(_replay_toolbar, "Back to Best Moments", func() -> void: _show_lobby(8))
+	Widgets.scale_tree(_replay_toolbar, Widgets.factor(_ui))
+	_replay_time = _replay_seek.min_value
+	_replay_playing = true
+	_resize_layout()
+	_update_replay(0.0)
+
+func _update_replay(delta: float) -> void:
+	if _replay_clip.is_empty():
+		return
+	if _replay_playing:
+		_replay_time = minf(_replay_seek.max_value, _replay_time + maxf(0.0, delta))
+		if _replay_time >= _replay_seek.max_value:
+			_replay_playing = false
+	Moments.apply(_state, _replay_clip, _replay_time)
+	_replay_seek.set_value_no_signal(_replay_time)
+	_replay_label.text = "%s | %.1fs | READ-ONLY, NO RECORDING" % [
+		Moments.TITLES[Moments.KINDS.find(str(_replay_clip["kind"]))], _replay_time]
+	(_replay_toolbar.get_node("ReplayPause") as Button).text = (
+		"Pause replay" if _replay_playing else "Play replay")
+	_view.present()
+
+func _close_replay() -> void:
+	if _replay_clip.is_empty():
+		return
+	_replay_playing = false
+	_replay_clip.clear()
+	if is_instance_valid(_replay_panel):
+		_replay_panel.queue_free()
+	_replay_panel = null
+	_replay_toolbar = null
+	if _replay_saved_state != null:
+		_state = _replay_saved_state
+		_replay_saved_state = null
+		_customize_view()
+		_view.configure(_state)
+		_view.build()
+		_view.configure_activity(_state, "match")
+	_pause_button.show()
+	_stage = "lobby"
 
 func _close_modal() -> void:
 	if is_instance_valid(_modal):

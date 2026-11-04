@@ -15,13 +15,17 @@ var active_left := 0.0
 var _telegraphed: Dictionary = {}
 var _fired: Dictionary = {}
 
-func _init(available: Array[Dictionary] = [], seed_value := 1, setting := 0) -> void:
+func _init(available: Array[Dictionary] = [], seed_value := 1, setting := 0,
+	hostile := false) -> void:
 	if setting == 2:
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value + 801
 	for index in available.size():
-		if index % (6 if setting == 1 else 3) != 2:
+		var ordinary := index % (6 if setting == 1 else 3) == 2
+		var extra := hostile and index % (6 if setting == 1 else 3) == (
+			5 if setting == 1 else 0)
+		if not ordinary and not extra:
 			continue
 		var slot := available[index].duplicate(true)
 		slot["kind"] = KINDS[rng.randi_range(0, KINDS.size() - 1)]

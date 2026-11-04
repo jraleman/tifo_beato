@@ -16,6 +16,7 @@ const Rival = preload("res://games/tifo_beato/world/rival_rig.gd")
 const War = preload("res://games/tifo_beato/match/chant_war.gd")
 const Steward = preload("res://games/tifo_beato/steward/steward_state.gd")
 const Build = preload("res://games/tifo_beato/workshop/build_race.gd")
+const Travel = preload("res://games/tifo_beato/world/travel_scenery.gd")
 var world_viewport: SubViewport
 var camera: Camera3D
 var world: Node3D
@@ -38,6 +39,7 @@ var first_player_color := Color("4da3ff")
 var second_player_color := Color("ff5c6c")
 var activity: RefCounted
 var activity_kind := "match"
+var activity_context := "rehearsal"
 var opponent: Node3D
 var effects: Dictionary = {}
 var beach_balls: Array[Node3D] = []
@@ -50,6 +52,12 @@ var _floodlight: DirectionalLight3D
 var _environment: WorldEnvironment
 var _last_time := 0.0
 var _banner_mishaps := -1
+var _ground_root: Node3D
+var _travel: Travel
+var _tornado: Node3D
+var _crowd_scale := 1.0
+var _mural_progress := -1
+var _mural_image: Image
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -74,8 +82,10 @@ func _ready() -> void:
 
 func configure(match_state: State) -> void:
 	state = match_state
-	if ground != state.ground:
+	var crowd_scale := float(state.get("_settings").get("crowd_scale", 1.0))
+	if ground != state.ground or not is_equal_approx(crowd_scale, _crowd_scale):
 		ground = state.ground
+		_crowd_scale = crowd_scale
 		if is_node_ready():
 			build()
 	if tifo != null:
@@ -108,9 +118,10 @@ func build() -> void:
 	light_stage(world, ground == 4)
 	_environment = world.get_child(0) as WorldEnvironment
 	_floodlight = world.get_node("WarmFloodlight") as DirectionalLight3D
-	world.add_child(Ground.new(ground))
+	_ground_root = Ground.new(ground)
+	world.add_child(_ground_root)
 	var count: int = [11, 300, 900, 1800, 3000][ground]
-	crowd = Crowd.new(count)
+	crowd = Crowd.new(roundi(count * _crowd_scale))
 	crowd.primary = primary
 	crowd.secondary = secondary
 	crowd.scarf_pattern = scarf_pattern
@@ -160,6 +171,19 @@ func build() -> void:
 		ball.position = Vector3(-8 + index * 2.2, 5.0 + index % 3, -6)
 		world.add_child(ball)
 		beach_balls.append(ball)
+	_tornado = Node3D.new()
+	_tornado.name = "OriginalScarfTornado"
+	_tornado.position = Vector3(5, 2, -7)
+	world.add_child(_tornado)
+	var ribbons := Builder.new()
+	for index in 24:
+		var angle := index * TAU / 6.0
+		var radius := 0.7 + index * 0.075
+		ribbons.box(Vector3(cos(angle) * radius, index * 0.18, sin(angle) * radius),
+			Vector3(0.9, 0.12, 0.3), primary if index % 2 == 0 else secondary,
+			Vector3(0, -angle, 0.2))
+	Builder.instance(ribbons.finish(), _tornado, "SpinningOriginalScarves")
+	_tornado.hide()
 	camera = Camera3D.new()
 	camera.name = "FencePitchTifoCamera"
 	camera.current = true
@@ -180,11 +204,27 @@ func _build_activity() -> void:
 	_activity_root.name = "ActualActivityCast"
 	world.add_child(_activity_root)
 	opponent = null
+	_travel = null
+	_mural_progress = -1
+	_mural_image = null
+	var travel_scene := activity_kind in ["away_bus", "away_station", "derby_ritual", "mural"]
+	_ground_root.visible = not travel_scene
+	pitch.visible = not travel_scene
+	crowd.visible = not travel_scene
+	tifo.visible = not travel_scene
+	_tornado.visible = false
 	capo.position.x = 0.0
 	capo.rotation.y = PI
-	if activity_kind in ["war", "steward", "workshop"]:
+	if activity_kind in ["war", "steward", "workshop", "mural", "derby_ritual"]:
 		capo.position.x = -3.0
 		capo.rotation.y = 0.35
+	if travel_scene:
+		var kind := activity_kind.trim_prefix("away_")
+		if kind == "derby_ritual":
+			kind = activity_context
+		_travel = Travel.new(kind)
+		_activity_root.add_child(_travel)
+		capo.position.x = -2.5 if kind == "mural" else 0.0
 	if activity is War:
 		var war := activity as War
 		if war.cpu_rival:
@@ -217,7 +257,7 @@ func present() -> void:
 		_present_activity()
 		return
 	var phase := state.phase()
-	var index := state.chart.phase_index(state.time)
+	var index := state.phase_index()
 	if index != _phase:
 		_phase = index
 		if str(phase["kind"]) == "response" and not reduced_motion:
@@ -236,7 +276,8 @@ func present() -> void:
 		state.time, state.tifo.tier if state.tifo.reveal_left > 0 else 0, reduced_motion)
 	capo.pose(state.crowd.energy, state.life.dead, state.time, reduced_motion)
 	pitch.present(state.sim, state.crowd.energy, state.time, reduced_motion)
-	tifo.present(state.tifo.tier, state.tifo.reveal_left, state.time, reduced_motion, intense_effects)
+	tifo.present(state.tifo.tier, state.tifo.reveal_left, state.time, reduced_motion,
+		intense_effects, not state.visual_phase.is_empty())
 	_present_effects()
 
 func _present_activity() -> void:
@@ -264,12 +305,25 @@ func _present_activity() -> void:
 		if build.banner.mishaps.size() != _banner_mishaps:
 			_banner_mishaps = build.banner.mishaps.size()
 			tifo.configure(crowd.seats, build.banner)
-		tifo.present(3, 1.0, now, false, false)
+		if activity_kind == "mural" and _travel != null:
+			if _mural_image == null or _mural_progress != build.judge.hits:
+				_mural_image = build.banner.render_image()
+				_mural_progress = build.judge.hits
+			_travel.set_mural(_mural_image,
+				float(build.judge.hits) / maxf(1, build.judge.notes.size()))
+		else:
+			tifo.present(3, 1.0, now, false, false)
+	if _travel != null:
+		var beat := float((activity as State).phase()["beat"]) if activity is State else 0.6
+		_travel.present(now, beat, reduced_motion)
+		player_energy = (activity as State).crowd.energy if activity is State else player_energy
 	capo.pose(player_energy, false, now, reduced_motion)
 	crowd.present(65, 0.8, 0.1, now, 1, reduced_motion)
 
 func _present_effects() -> void:
 	var active := state.chaos.active
+	_tornado.visible = state.fury.protection_left > 0.0
+	_tornado.rotation.y = 0.0 if reduced_motion else state.time * 2.5
 	for kind: String in effects:
 		(effects[kind] as Node3D).visible = kind == active or kind == state.disruptions.active \
 			or kind == "rain" and "rain" in state.chaos.successes
@@ -290,6 +344,10 @@ func _present_effects() -> void:
 	var dt := clampf(state.time - _last_time, 0.0, 0.1)
 	_last_time = state.time
 	var lighting := 0.22 if active == "power_cut" else 1.0
+	if not state.visual_phase.is_empty():
+		_floodlight.light_energy = lighting * 1.4
+		_environment.environment.ambient_light_energy = lighting * 0.65
+		return
 	_floodlight.light_energy = lerpf(_floodlight.light_energy, lighting * 1.4, dt * 2.0)
 	_environment.environment.ambient_light_energy = lerpf(
 		_environment.environment.ambient_light_energy, lighting * 0.65, dt * 2.0)
@@ -331,11 +389,14 @@ func _frame_camera() -> void:
 	camera.size = maxf(40.0, 66.0 / aspect)
 	if _shot == 0:
 		camera.size = maxf(24.0, 42.0 / aspect)
-	if activity_kind in ["war", "steward", "workshop"]:
+	if activity_kind in ["war", "steward", "workshop", "away_bus", "away_station",
+		"derby_ritual", "mural"]:
 		var arena_focus := Vector3(0, 3.5, -5.0)
 		camera.position = arena_focus + Vector3(5, 5, 15)
 		camera.look_at(arena_focus)
 		camera.size = maxf(16.0, 20.0 / aspect)
+		if activity_kind in ["away_bus", "away_station", "derby_ritual", "mural"]:
+			camera.size = maxf(11.0, 18.0 / aspect)
 
 static func light_stage(root: Node3D, sunset := false) -> void:
 	var environment := WorldEnvironment.new()
