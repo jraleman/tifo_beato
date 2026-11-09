@@ -1196,6 +1196,7 @@ character_preview.tscn, store_preview.tscn, gallery_stage.tscn, share_art.tscn
 assets/                       # captured icon/ground/intro stills and tutorial/poster
 tests/                        # actual suites and event/platform fixtures (§15)
 tools/                        # validate.ps1, capture_art.gd, tutorial_driver.gd,
+                               # screen_tour.gd (screenshot-tour career seed),
                                # numeric sound_spike and chart_preview scenes/scripts
 ```
 
@@ -1292,7 +1293,8 @@ game.theme = theme                              # §12.3
 ## 15. Tests — `tests/`
 
 These are the actual suite names. They run headless unless noted, as standalone
-`SceneTree` scripts. `tools/validate.ps1` provides an isolated project/user
+`SceneTree` scripts. `tools/validate.ps1` and its Linux/macOS counterpart
+`tools/validate.sh` provide an isolated project/user
 directory and rejects unexpected engine diagnostics even with exit code 0.
 
 | Suite | Covers |

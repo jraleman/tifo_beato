@@ -1,0 +1,2 @@
+# Keep Bash entry points on LF even in Windows checkouts.
+*.sh text eol=lf

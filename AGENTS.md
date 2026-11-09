@@ -65,7 +65,8 @@ godot --path . --script res://games/tifo_beato/tests/curva_view_test.gd -- --gam
 godot --path . -- --game=tifo_beato
 ```
 
-Use the game-owned validation runner for an isolated user profile. The host
+Use the game-owned `tools/validate.ps1` (Windows) or `tools/validate.sh`
+(Linux/macOS; Bash 3.2+ and Python 3.10+) for an isolated user profile. The host
 framework suites sweep this manifest automatically. `curva_view_test.gd`
 also checks all five intro cards and expanded workbench/replay pages after
 wrapping at normal/enlarged UI scales, plus real travel/ritual scenery.

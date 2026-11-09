@@ -143,8 +143,17 @@ From this folder:
   -TimeoutSeconds 300
 ```
 
-The runner imports an isolated junction project/user directory, saves logs and
-checks engine diagnostics as well as exit codes. `sound_test.gd`,
+On Linux/macOS (Bash 3.2+ and Python 3.10+):
+
+```bash
+bash tools/validate.sh --godot godot \
+  --suites sound,model,scene,flow,post_v1,post_v1_flow --window --framework \
+  --timeout-seconds 300
+```
+
+The runners import an isolated junction (Windows) or symlink (Linux/macOS)
+project/user directory, save logs and check engine diagnostics as well as exit
+codes. `sound_test.gd`,
 `model_test.gd`, `scene_test.gd`, `flow_test.gd`, `post_v1_test.gd` and
 `post_v1_flow_test.gd` run headless;
 `curva_view_test.gd` requires an actual graphics window. Flow tests route real
@@ -169,9 +178,20 @@ godot --path . --script res://games/tifo_beato/tools/capture_art.gd -- --game=ti
 .\tools\record_tutorials.ps1 -Godot 'C:\path\to\godot.exe' -Games tifo_beato
 ```
 
+The equivalent Unix tutorial command is
+`bash tools/record_tutorials.sh --godot godot --games tifo_beato`.
+
 `sound_spike.tscn` offers explicit-start numeric diagnostics; `chart_preview.tscn`
 inspects the 24 original charts without awarding grades. Neither is shipped.
 There is deliberately no raw-audio recorder.
+
+`screen_tour.gd` is this game's hook for the shared screenshot tour
+(`tools/capture_screens.ps1` or `tools/capture_screens.sh`). In the tour's
+throwaway profile it records five stars at every stop, every rival and every
+tifo, so later grounds, lobby rivals
+and every gallery exhibit are on screen; identity, banner, chants and the
+Daily Derby stay fresh. Like the tools above it is not shipped, and the tour
+refuses any profile it did not make, so a player's career is never touched.
 
 ## Packaging and outstanding release gates
 
