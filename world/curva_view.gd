@@ -17,6 +17,8 @@ const War = preload("res://games/tifo_beato/match/chant_war.gd")
 const Steward = preload("res://games/tifo_beato/steward/steward_state.gd")
 const Build = preload("res://games/tifo_beato/workshop/build_race.gd")
 const Travel = preload("res://games/tifo_beato/world/travel_scenery.gd")
+const KEY_LIGHT_ENERGY := 0.85
+const AMBIENT_ENERGY := 0.5
 var world_viewport: SubViewport
 var camera: Camera3D
 var world: Node3D
@@ -345,12 +347,12 @@ func _present_effects() -> void:
 	_last_time = state.time
 	var lighting := 0.22 if active == "power_cut" else 1.0
 	if not state.visual_phase.is_empty():
-		_floodlight.light_energy = lighting * 1.4
-		_environment.environment.ambient_light_energy = lighting * 0.65
+		_floodlight.light_energy = lighting * KEY_LIGHT_ENERGY
+		_environment.environment.ambient_light_energy = lighting * AMBIENT_ENERGY
 		return
-	_floodlight.light_energy = lerpf(_floodlight.light_energy, lighting * 1.4, dt * 2.0)
+	_floodlight.light_energy = lerpf(_floodlight.light_energy, lighting * KEY_LIGHT_ENERGY, dt * 2.0)
 	_environment.environment.ambient_light_energy = lerpf(
-		_environment.environment.ambient_light_energy, lighting * 0.65, dt * 2.0)
+		_environment.environment.ambient_light_energy, lighting * AMBIENT_ENERGY, dt * 2.0)
 
 func set_reduced_motion(value: bool) -> void:
 	reduced_motion = value
@@ -404,14 +406,14 @@ static func light_stage(root: Node3D, sunset := false) -> void:
 	settings.background_mode = Environment.BG_COLOR
 	settings.background_color = Color("53425e") if sunset else Color("202c40")
 	settings.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	settings.ambient_light_color = Color("fff6d8")
-	settings.ambient_light_energy = 0.65
+	settings.ambient_light_color = Color("dee7ef")
+	settings.ambient_light_energy = AMBIENT_ENERGY
 	environment.environment = settings
 	root.add_child(environment)
 	var light := DirectionalLight3D.new()
 	light.name = "WarmFloodlight"
 	light.light_color = Color("fff6d8")
-	light.light_energy = 1.4
+	light.light_energy = KEY_LIGHT_ENERGY
 	light.rotation_degrees = Vector3(-48, -30, 0)
 	light.shadow_enabled = true
 	light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL

@@ -83,6 +83,22 @@ func _run() -> void:
 			_expect(get_root().get_texture().get_image().save_png(_folder.path_join(name)) == OK,
 				"Save the actual HUD and world screenshot.")
 			print("%s / %.1f: world %s, %d draw calls" % [dimensions, scale_value, view.size, draw_calls])
+			(game.get_node("%HudHelpButton") as Button).pressed.emit()
+			for frame in 4:
+				await process_frame
+			hud.call("present")
+			await process_frame
+			await RenderingServer.frame_post_draw
+			var heights: Vector2 = hud.call("layout_heights")
+			lane = hud.call("lane_bounds")
+			_expect(hud.global_position.y + heights.x <= lane.position.y
+				and lane.end.y <= controls.global_position.y
+				and get_root().get_visible_rect().encloses(controls.get_global_rect()),
+				"Expanded Help must keep header, rhythm lane and pads separate at %s / %.1f." % [
+					dimensions, scale_value])
+			_expect(get_root().get_texture().get_image().save_png(_folder.path_join(
+				"help_" + name)) == OK, "Save the actual expanded controls.")
+			(game.get_node("%HudHelpButton") as Button).pressed.emit()
 	var tifo: Node3D = view.get("tifo")
 	tifo.call("present", 0, 0.0, 0.0, false, false)
 	tifo.call("present", 5, 8.0, 1.0, true, false)
@@ -234,7 +250,8 @@ func _test_expanded_workbench(settings: Node, clips: Array) -> void:
 				replay_state.get("tifo").set("reveal_left", 5.0)
 				replay_view.call("present")
 				_expect(is_equal_approx(
-					(replay_view.get("_floodlight") as DirectionalLight3D).light_energy, 1.4)
+					(replay_view.get("_floodlight") as DirectionalLight3D).light_energy,
+					float(replay_view.get_script().get_script_constant_map()["KEY_LIGHT_ENERGY"]))
 					and is_equal_approx(float(replay_view.get("tifo").get("_opacity")), 1.0),
 					"Backward seeking cannot inherit earlier lighting or tifo fades.")
 				game.call("_update_replay", 0.0)
@@ -357,6 +374,8 @@ func _test_real_input(game: Node, settings: Node) -> void:
 			"actual_input_%dx%d.png" % [setup["size"].x, setup["size"].y])) == OK,
 			"Save actual judged-input images, not only time-zero presentation fixtures.")
 		print("Native input %s: %s genuine hits." % [setup["size"], judge.get("hits")])
+	if not bool(game.call("hud_controls_expanded")):
+		(game.get_node("%HudHelpButton") as Button).pressed.emit()
 	game.call("_set_capture_inset", 260.0)
 	await process_frame
 	var controls := game.get("_controls") as Control

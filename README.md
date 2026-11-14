@@ -44,6 +44,11 @@ Keyboard bindings are rebindable in Controls. Touch contacts are independent;
 release an old key, trigger or finger before confirming a handoff. All sources,
 including CPU rivals, use the same 100 Hz classifier and timing judge.
 
+The translucent HUD keeps counters and the rhythm lane visible. **Help** opens
+the labelled pads; required touchscreen pads remain available. On small screens,
+long club/metric explanations stay in the Guide and accessibility descriptions
+rather than covering the lane. The selected microphone source retains a **MIC** tag.
+
 Square Beat means an onset; Shout needs 150 ms; Sing uses your comfortable
 relative pitch; Hold needs 80% coverage; X Rest means silence. Normal timing
 windows are 45 / 90 / 140 ms for Perfect / Great / Good. Responses are breath

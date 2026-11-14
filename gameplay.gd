@@ -172,6 +172,8 @@ func _build_playfield() -> void:
 	_controls.action_changed.connect(_touch_action)
 	_controls.screen_touch_changed.connect(_observe_touch)
 	_ui.add_child(_controls)
+	mount_hud_help(_ui)
+	register_hud_controls(_controls, _resize_layout)
 	_pause_button.reparent(_ui)
 	_pause_button.text = "Pause"
 	_pause_button.focus_mode = Control.FOCUS_NONE
@@ -406,7 +408,7 @@ func _reset_round_state() -> void:
 	_customize_view()
 	_view.configure(_state)
 	_match_hud.show()
-	_controls.show()
+	_sync_hud_controls()
 	_match_hud.static_lane = Settings.tunable_bool(Options.STATIC_LANE)
 	_controls.layout = Settings.tunable_choice(Options.TOUCH_LAYOUT)
 	_resize_layout()
@@ -1391,13 +1393,13 @@ func _resize_layout() -> void:
 	_ui.size = dimensions
 	_controls.set_powers_enabled(_state == null or not bool(_state.get("_settings").get("practice", false)))
 	_controls.fit(dimensions.x - 24 * factor, factor, portrait)
-	_controls.position = Vector2(12 * factor, dimensions.y - _controls.size.y - 8 * factor)
-	_match_hud.factor = factor
+	var control_height := _controls.size.y if _controls.visible else 0.0
+	_controls.position = Vector2(12 * factor, dimensions.y - control_height - 8 * factor)
+	_match_hud.factor = _shell_hud_unit
+	_match_hud.show_details = hud_controls_expanded()
 	_match_hud.size = Vector2(dimensions.x, _controls.position.y - 6 * factor)
-	var hud_heights := _match_hud.layout_heights()
-	var header := hud_heights.x
-	_view.position = Vector2(0, header)
-	_view.size = Vector2(dimensions.x, maxf(1.0, _match_hud.size.y - header - hud_heights.y))
+	_view.position = Vector2.ZERO
+	_view.size = _match_hud.size
 	if _stage == "replay" and _replay_panel != null:
 		_replay_seek.custom_minimum_size.y = maxf(48 * factor, Widgets.touch_minimum(_ui))
 		Widgets.scale_tree(_replay_toolbar, factor)
@@ -1406,13 +1408,23 @@ func _resize_layout() -> void:
 		_view.size = Vector2(dimensions.x, maxf(1.0, dimensions.y - footer))
 		_replay_panel.position = Vector2(8 * factor, dimensions.y - footer)
 		_replay_panel.size = Vector2(dimensions.x - 16 * factor, footer - 8 * factor)
-	_pause_button.size = Vector2(104, 54) * factor
-	_pause_button.position = Vector2(dimensions.x - _pause_button.size.x - 14 * factor, 8 * factor)
-	_pause_button.add_theme_font_size_override("font_size", roundi(20 * factor))
+	var hud_unit := _shell_hud_unit
+	_pause_button.custom_minimum_size = Vector2(44, 44) * hud_unit
+	_pause_button.text = "II"
+	_pause_button.tooltip_text = "Pause"
+	_pause_button.accessibility_name = "Pause"
+	_pause_button.size = _pause_button.custom_minimum_size
+	_pause_button.position = Vector2(dimensions.x - _pause_button.size.x - 14 * hud_unit, 8 * hud_unit)
+	_pause_button.add_theme_font_size_override("font_size", roundi(20 * hud_unit))
+	_hud_help_button.custom_minimum_size = Vector2.ONE * 44 * hud_unit
+	_hud_help_button.size = _hud_help_button.custom_minimum_size
+	_hud_help_button.add_theme_constant_override("icon_max_width", roundi(22 * hud_unit))
+	_hud_help_button.position = _pause_button.position - Vector2(50 * hud_unit, 0)
+	_hud_help_button.visible = _stage != "replay"
 	_match_hud.queue_redraw()
 	if _railway_button != null:
 		_railway_button.custom_minimum_size.y = 54 * factor
-		_railway_button.size = Vector2(minf(360 * factor, dimensions.x - 140 * factor), 54 * factor)
+		_railway_button.size = Vector2(minf(360 * factor, dimensions.x - 124 * hud_unit), 54 * factor)
 		_railway_button.position = Vector2(14, 8) * factor
 		_railway_button.add_theme_font_size_override("font_size", roundi(20 * factor))
 	_fit_modal()

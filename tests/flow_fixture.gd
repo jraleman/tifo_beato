@@ -19,6 +19,9 @@ var _cursor := 0
 func _init(node: Node, touch_mode := false) -> void:
 	game = node
 	use_touch = touch_mode
+	if use_touch and not (game.get("_controls") as Control).is_visible_in_tree():
+		(game.get_node("%HudHelpButton") as Button).pressed.emit()
+		game.call("_resize_layout")
 
 func tick(render_every := 4) -> void:
 	var audio: Node = game.get("_audio")
